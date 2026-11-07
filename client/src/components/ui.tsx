@@ -1,7 +1,9 @@
-import { forwardRef, useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye, EyeOff, Home, Loader2, Minus, Plus, X } from 'lucide-react';
 import { initials } from '../lib/format';
+import { DEMO } from '../lib/api';
+import { demoImage } from '../demo/images';
 
 export const cx = (...c: unknown[]) => c.filter(Boolean).join(' ');
 
@@ -231,10 +233,16 @@ export function Avatar({ name, src, size = 40, className }: { name: string; src?
 }
 
 /** Imagem com fallback elegante caso a URL falhe ou não exista. */
-export function Img({ src, alt, className }: { src?: string | null; alt: string; className?: string }) {
+export function Img({ src: rawSrc, alt, className }: { src?: string | null; alt: string; className?: string }) {
+  const src = DEMO && rawSrc?.startsWith('https://images.unsplash.com') ? demoImage(rawSrc) : rawSrc;
   const [err, setErr] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  useEffect(() => { setErr(false); setLoaded(false); }, [src]);
+  const ref = useRef<HTMLImageElement>(null);
+  // Ao trocar a imagem, reinicia o estado; se ela já veio do cache (carga instantânea), mantém visível
+  useEffect(() => {
+    setErr(false);
+    setLoaded(!!ref.current?.complete && (ref.current?.naturalWidth ?? 0) > 0);
+  }, [src]);
   if (!src || err)
     return (
       <div className={cx('img-fallback grid place-items-center', className)} role="img" aria-label={alt}>
@@ -243,6 +251,7 @@ export function Img({ src, alt, className }: { src?: string | null; alt: string;
     );
   return (
     <img
+      ref={ref}
       src={src}
       alt={alt}
       loading="lazy"

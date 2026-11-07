@@ -33,6 +33,7 @@ npm start          # produção: API + front compilado em http://localhost:3333
 npm run seed       # recria os dados de demonstração (apaga o banco atual)
 npm test           # testes automatizados de segurança e regras de negócio
 npm run typecheck
+npm run build:demo # gera dist-demo/index.html: demonstração em um único arquivo, sem servidor
 ```
 
 ---

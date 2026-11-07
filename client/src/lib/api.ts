@@ -1,3 +1,6 @@
+/** Versão de demonstração: roda sem servidor, com dados gravados (npm run build:demo). */
+export const DEMO = !!import.meta.env.VITE_DEMO;
+
 let csrfToken: string | null = null;
 export const setCsrf = (t: string | null) => { csrfToken = t; };
 
@@ -17,6 +20,7 @@ let onUnauthorized: (() => void) | null = null;
 export const setUnauthorizedHandler = (fn: () => void) => { onUnauthorized = fn; };
 
 export async function api<T = any>(path: string, opts: Opts = {}): Promise<T> {
+  if (DEMO) return (await import('../demo/mock')).demoApi(path, opts);
   const method = opts.method ?? (opts.body !== undefined ? 'POST' : 'GET');
   const headers: Record<string, string> = { Accept: 'application/json' };
   let body: BodyInit | undefined;

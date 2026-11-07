@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Building2, Eye, Heart, ImagePlus, Loader2, Plus, Search, Star, Trash2, Users, X } from 'lucide-react';
-import { api, qs, uploadImages } from '../../lib/api';
+import { api, DEMO, qs, uploadImages } from '../../lib/api';
 import { useApi, useDebounced } from '../../lib/hooks';
 import { brl, priceSuffix, PURPOSE_LABEL, STATUS_LABEL, TYPE_LABEL } from '../../lib/format';
 import { useAuth, useToast } from '../../context/app';
@@ -148,7 +148,7 @@ export function PropertyForm() {
   return (
     <div>
       <PageHeader back="/crm/imoveis" title={isNew ? 'Cadastrar imóvel' : existing.data?.title} subtitle={isNew ? 'Preencha os dados e publique na vitrine.' : `${existing.data?.code} · ${existing.data?.views} visualizações`}
-        actions={!isNew && <Link to={`/imovel/${id}`} target="_blank"><Button variant="outline" size="sm" icon={<Eye className="size-4" />}>Ver anúncio</Button></Link>} />
+        actions={!isNew && <Link to={`/imovel/${id}`} target={DEMO ? undefined : '_blank'}><Button variant="outline" size="sm" icon={<Eye className="size-4" />}>Ver anúncio</Button></Link>} />
       {existing.data?.status === 'pendente' && (
         <div className="mb-5 rounded-2xl border border-warning/30 bg-warning-soft p-4 text-sm">Este imóvel foi enviado por um proprietário. Revise os dados, complete as informações e altere o status para <b>Disponível</b> para publicá-lo.</div>
       )}

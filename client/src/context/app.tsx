@@ -73,7 +73,7 @@ export const useAuth = () => useContext(AuthContext);
 type Theme = 'dark' | 'light';
 const ThemeContext = createContext<{ theme: Theme; toggle: () => void; set: (t: Theme) => void }>(null!);
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || 'dark');
+  const [theme, setTheme] = useState<Theme>(() => (document.documentElement.dataset.theme as Theme) || (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0f0d0b' : '#efebe5');
@@ -94,6 +94,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((t) => [...t, { id, message, tone }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
   }, []);
+  useEffect(() => {
+    const fn = (e: Event) => push((e as CustomEvent<string>).detail, 'info');
+    window.addEventListener('wi-toast', fn);
+    return () => window.removeEventListener('wi-toast', fn);
+  }, [push]);
   return (
     <ToastContext.Provider value={push}>
       {children}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Bath, BedDouble, Car, GitCompareArrows, Heart, MapPin, Maximize2, ShieldCheck } from 'lucide-react';
 import type * as Leaflet from 'leaflet';
 import { api } from '../lib/api';
@@ -37,6 +37,7 @@ export function useFavorite(id: number, initial: boolean) {
   const [fav, setFav] = useState(initial);
   const { user } = useAuth();
   const nav = useNavigate();
+  const loc = useLocation();
   const toast = useToast();
   useEffect(() => setFav(initial), [initial]);
   const toggle = async (e?: React.MouseEvent) => {
@@ -44,7 +45,7 @@ export function useFavorite(id: number, initial: boolean) {
     e?.stopPropagation();
     if (!user) {
       toast('Entre na sua conta para salvar favoritos.', 'info');
-      return nav('/entrar', { state: { from: location.pathname } });
+      return nav('/entrar', { state: { from: loc.pathname } });
     }
     setFav((f) => !f);
     try {

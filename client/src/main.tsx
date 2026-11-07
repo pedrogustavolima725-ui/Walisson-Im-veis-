@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, lazy, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter, Navigate, Outlet, RouterProvider, ScrollRestoration } from 'react-router-dom';
+import { createBrowserRouter, createMemoryRouter, Navigate, Outlet, RouterProvider, ScrollRestoration } from 'react-router-dom';
+import { DEMO } from './lib/api';
 import './styles.css';
 import { AuthProvider, CompareProvider, CountsProvider, ThemeProvider, ToastProvider } from './context/app';
 import { AppLayout, CrmLayout, RequireAuth } from './components/layout';
@@ -23,16 +24,37 @@ const messages = () => import('./pages/messages');
 
 const guard = (el: React.ReactNode) => <RequireAuth>{el}</RequireAuth>;
 
+if (DEMO) {
+  // O visualizador não exibe confirm(); na demonstração as confirmações seguem direto
+  window.confirm = () => true;
+  // Links de exportação (CSV) dependem do servidor real
+  document.addEventListener('click', (e) => {
+    const a = (e.target as HTMLElement).closest?.('a[href^="/api/"]');
+    if (a) {
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('wi-toast', { detail: 'Exportação disponível na versão instalada no servidor.' }));
+    }
+  }, true);
+}
+
+function DemoBar() {
+  return (
+    <div className="relative z-50 border-b border-line bg-accent-soft px-4 py-1.5 text-center text-[11px] font-medium text-accent">
+      Demonstração · dados de exemplo · senha das contas de teste: Demo@2026 · alterações não são salvas
+    </div>
+  );
+}
+
 function Root() {
   return (
     <>
-      <ScrollRestoration />
+      {DEMO ? <DemoBar /> : <ScrollRestoration />}
       <Outlet />
     </>
   );
 }
 
-const router = createBrowserRouter([
+const router = (DEMO ? createMemoryRouter : createBrowserRouter)([
   {
     element: <Root />,
     children: [

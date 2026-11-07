@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, KeyRound, Lock, Mail, Phone, ShieldCheck, User as UserIcon } from 'lucide-react';
-import { api, ApiError, setCsrf } from '../lib/api';
+import { api, ApiError, DEMO, setCsrf } from '../lib/api';
 import { maskPhone, passwordStrength } from '../lib/format';
 import { useAuth, useToast } from '../context/app';
 import { Button, cx, Field, Img, Input, PasswordInput } from '../components/ui';
@@ -271,7 +271,7 @@ export function Register() {
         <Field label="Confirmar senha" error={fields.confirm}><PasswordInput autoComplete="new-password" value={f.confirm} onChange={set('confirm')} placeholder="Repita a senha" invalid={!!fields.confirm} /></Field>
         <label className="flex items-start gap-3 text-sm text-muted">
           <input type="checkbox" checked={f.acceptTerms} onChange={set('acceptTerms')} className="mt-0.5 size-4 shrink-0 accent-[var(--accent)]" />
-          <span>Li e aceito os <Link to="/termos" target="_blank" className="text-accent underline-offset-2 hover:underline">Termos de Uso e a Política de Privacidade</Link>.</span>
+          <span>Li e aceito os <Link to="/termos" target={DEMO ? undefined : '_blank'} className="text-accent underline-offset-2 hover:underline">Termos de Uso e a Política de Privacidade</Link>.</span>
         </label>
         {fields.acceptTerms && <p className="-mt-2 text-xs text-danger">{fields.acceptTerms}</p>}
         <label className="flex items-start gap-3 text-sm text-muted">

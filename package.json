@@ -15,7 +15,8 @@
     "start": "NODE_ENV=production tsx server/src/index.ts",
     "seed": "tsx server/src/seed.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit",
-    "test": "node --test --import tsx server/test/*.test.ts"
+    "test": "node --test --import tsx server/test/*.test.ts",
+    "build:demo": "tsx server/scripts/record-demo.ts && vite build -c vite.demo.config.ts"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
@@ -46,6 +47,7 @@
     "concurrently": "^10.0.7",
     "tailwindcss": "^4.3.5",
     "typescript": "^5.9.3",
-    "vite": "^6.4.5"
+    "vite": "^6.4.5",
+    "vite-plugin-singlefile": "^2.3.4"
   }
 }

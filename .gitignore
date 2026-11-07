@@ -6,3 +6,4 @@ data/uploads/*
 !data/uploads/.gitkeep
 .env
 *.log
+dist-demo
