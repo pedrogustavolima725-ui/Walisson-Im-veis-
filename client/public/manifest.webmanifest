@@ -1,0 +1,11 @@
+{
+  "name": "Walisson Imóveis",
+  "short_name": "Walisson",
+  "description": "Encontre, visite e negocie seu imóvel com segurança.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0d0b",
+  "theme_color": "#0f0d0b",
+  "lang": "pt-BR",
+  "icons": [{ "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
