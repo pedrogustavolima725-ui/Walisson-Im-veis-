@@ -13,10 +13,10 @@
     "dev:web": "vite",
     "build": "vite build",
     "start": "NODE_ENV=production tsx server/src/index.ts",
-    "seed": "tsx server/src/seed.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit",
     "test": "node --test --import tsx server/test/*.test.ts",
-    "build:demo": "tsx server/scripts/record-demo.ts && vite build -c vite.demo.config.ts"
+    "build:demo": "tsx server/scripts/record-demo.ts && vite build -c vite.demo.config.ts",
+    "seed:demo": "tsx server/src/seed.ts"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

@@ -18,7 +18,8 @@ export function AreaChart({ data, format, height = 240, label }: { data: { label
   const pts = data.map((d, i) => [x(i), y(d.value)] as const);
   const path = smooth(pts);
   const area = `${path} L ${x(data.length - 1)} ${H - pad.b} L ${x(0)} ${H - pad.b} Z`;
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * nice);
+  const empty = data.every((d) => !d.value);
+  const ticks = empty ? [0] : [0, 0.25, 0.5, 0.75, 1].map((t) => t * nice);
 
   const onMove = (e: React.PointerEvent) => {
     const r = ref.current!.getBoundingClientRect();
@@ -45,6 +46,7 @@ export function AreaChart({ data, format, height = 240, label }: { data: { label
         {data.map((d, i) => (
           <text key={d.label + i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="11" fill={hover === i ? 'var(--text)' : 'var(--faint)'} className="capitalize">{d.label}</text>
         ))}
+        {empty && <text x={(W + pad.l) / 2} y={H / 2 - 10} textAnchor="middle" fontSize="13" fill="var(--muted)">Os números aparecem aqui conforme os negócios acontecem</text>}
         <path d={area} fill="url(#area-fill)" />
         <path d={path} fill="none" stroke="var(--chart)" strokeWidth="2" strokeLinecap="round" />
         {hover !== null && (

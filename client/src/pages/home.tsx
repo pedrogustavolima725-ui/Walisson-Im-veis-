@@ -117,6 +117,18 @@ export function Home() {
         ))}
       </section>
 
+      {meta.data && meta.data.cities.length === 0 ? (
+        <section className="mt-9 overflow-hidden rounded-[28px] border border-line bg-surface p-6 md:p-8">
+          <span className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent"><Sparkles className="size-6" /></span>
+          <h2 className="mt-4 text-xl font-semibold tracking-tight">Novos imóveis chegando em breve</h2>
+          <p className="mt-1 max-w-lg text-sm text-muted">Nossa equipe está selecionando as melhores opções. Crie sua conta para receber um aviso assim que os primeiros imóveis forem publicados.</p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            {!user && <Link to="/cadastro" className="flex h-11 items-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-ink">Criar conta</Link>}
+            <Link to="/anunciar" className="flex h-11 items-center rounded-full border border-line-strong px-5 text-sm font-semibold">Quero anunciar meu imóvel</Link>
+          </div>
+        </section>
+      ) : (
+        <>
       {/* Destaques */}
       <section className="mt-9">
         <SectionTitle title="Destaques da semana" action="Ver todos" to="/buscar?featured=1" />
@@ -179,8 +191,11 @@ export function Home() {
             ? Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="aspect-[4/3.6] rounded-[26px]" />)
             : recent.data?.items.map((p) => <PropertyCard key={p.id} p={p} />)}
         </div>
-        {recent.data && recent.data.items.length === 0 && <p className="py-10 text-center text-sm text-muted">Nenhum imóvel deste tipo no momento.</p>}
+        {recent.data && recent.data.items.length === 0 && <p className="py-10 text-center text-sm text-muted">{type ? 'Nenhum imóvel deste tipo no momento.' : 'Nenhum imóvel publicado ainda.'}</p>}
       </section>
+
+        </>
+      )}
 
       {/* Ferramentas */}
       <section className="mt-10 grid gap-4 md:grid-cols-2">

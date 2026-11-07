@@ -15,22 +15,23 @@ npm install
 npm run dev        # API em :3333 + front em http://localhost:5173
 ```
 
-Na primeira execução o banco é criado em `data/walisson.db` e populado com dados de demonstração.
+Antes da primeira execução, crie o arquivo `.env` (copie de `.env.example`) com a conta do administrador:
 
-| Conta | E-mail | Senha |
-|---|---|---|
-| Administrador | `admin@walissonimoveis.com.br` | `Demo@2026` |
-| Corretor(a) | `mariana@walissonimoveis.com.br` | `Demo@2026` |
-| Cliente | `cliente@walissonimoveis.com.br` | `Demo@2026` |
+```env
+ADMIN_EMAIL=seu-email@exemplo.com
+ADMIN_PASSWORD=UmaSenhaForte2026
+```
 
-Na tela de login há atalhos para preencher essas contas.
+Na primeira execução o banco é criado em `data/walisson.db` **vazio**, apenas com essa conta de administrador. Imóveis, corretores e leads são cadastrados pelo próprio administrador no CRM. O `.env` não vai para o GitHub; a senha fica guardada só como hash no banco e pode ser trocada depois em *Minha conta → Segurança*.
+
+Para testar com dados fictícios (20 imóveis, leads, corretores), use `npm run seed:demo`: apaga o banco e cria contas de teste com a senha `Demo@2026`. Com `DEMO_MODE=true`, a tela de login mostra atalhos para essas contas.
 
 Outros comandos:
 
 ```bash
 npm run build      # compila o front-end para dist/
 npm start          # produção: API + front compilado em http://localhost:3333
-npm run seed       # recria os dados de demonstração (apaga o banco atual)
+npm run seed:demo  # apaga o banco e carrega dados fictícios para testes
 npm test           # testes automatizados de segurança e regras de negócio
 npm run typecheck
 npm run build:demo # gera dist-demo/index.html: demonstração em um único arquivo, sem servidor
@@ -108,7 +109,7 @@ data/                   banco SQLite e fotos enviadas (fora do git)
 
 ## Colocando em produção
 
-1. Copie `.env.example` para `.env` e ajuste `APP_URL`, `NODE_ENV=production` e `TRUST_PROXY` (1 se estiver atrás de Nginx/Cloudflare).
+1. Copie `.env.example` para `.env` e ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL`, `NODE_ENV=production` e `TRUST_PROXY` (1 se estiver atrás de Nginx/Cloudflare). No Render, preencha essas variáveis no painel.
 2. `npm ci && npm run build && npm start`.
 3. Sirva **sempre via HTTPS** (o cookie de sessão usa `Secure` e prefixo `__Host-` em produção).
 4. Faça backup periódico da pasta `data/` (banco + fotos).

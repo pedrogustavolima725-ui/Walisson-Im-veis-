@@ -46,6 +46,17 @@ export function Dashboard() {
         </div>
       </header>
 
+      {k.activeListings === 0 && user!.role === 'admin' && (
+        <Card className="flex flex-wrap items-center gap-4 p-5">
+          <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-accent-soft text-accent"><Building2 className="size-6" /></span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Comece cadastrando o primeiro imóvel</p>
+            <p className="text-sm text-muted">Assim que publicado, ele aparece na vitrine do app. Depois, cadastre sua equipe em Equipe e ative a verificação em duas etapas.</p>
+          </div>
+          <Link to="/crm/imoveis/novo"><Button icon={<Plus className="size-4" />}>Cadastrar imóvel</Button></Link>
+        </Card>
+      )}
+
       {k.pendingListings > 0 && (
         <Link to="/crm/imoveis?status=pendente" className="flex items-center gap-3 rounded-2xl border border-warning/30 bg-warning-soft p-4 text-sm">
           <AlertTriangle className="size-5 shrink-0 text-warning" />

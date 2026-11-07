@@ -1,4 +1,6 @@
-# Publicação no Render (https://render.com) — plano gratuito
+# Publicação no Render (https://render.com)
+# O banco começa vazio; o administrador é criado na 1ª inicialização a partir de
+# ADMIN_EMAIL e ADMIN_PASSWORD, preenchidos no painel do Render (sync: false = não ficam no código).
 services:
   - type: web
     name: walisson-imoveis
@@ -12,5 +14,11 @@ services:
         value: "22"
       - key: TRUST_PROXY
         value: "1"
-      - key: DEMO_MODE
-        value: "true"
+      - key: ADMIN_NAME
+        value: Walisson
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+    # Para uso real, os dados precisam de um disco persistente (plano pago):
+    # disk: { name: dados, mountPath: /opt/render/project/src/data, sizeGB: 1 }

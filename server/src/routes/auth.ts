@@ -169,7 +169,7 @@ authRouter.post('/forgot', resetLimiter, (req, res) => {
     const url = `${config.appUrl}/redefinir-senha?token=${token}`;
     // Integração de e-mail: substitua este log pelo seu provedor (SES, SendGrid, Resend...)
     console.log(`[e-mail] Redefinição de senha para ${email}: ${url}`);
-    if (config.demo) devResetUrl = url;
+    if (!config.isProd || config.demo) devResetUrl = url;
     audit(req, 'auth.password_reset_requested', {}, user.id);
   }
   // Mesma resposta exista ou não a conta (evita enumeração de usuários)

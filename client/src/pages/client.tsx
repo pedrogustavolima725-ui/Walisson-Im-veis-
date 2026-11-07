@@ -361,9 +361,11 @@ export function Agents() {
   return (
     <Page>
       <PageHeader title="Nossos corretores" subtitle="Profissionais credenciados no CRECI, prontos para te ajudar." />
-      {loading ? <PageLoader /> : (
+      {loading ? <PageLoader /> : !data?.length ? (
+        <Empty icon={<UsersRound />} title="Equipe em formação" text="Em breve você poderá conversar com nossos corretores por aqui." />
+      ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data?.map((a) => (
+          {data.map((a) => (
             <Card key={a.id} className="flex flex-col items-center p-6 text-center">
               <Avatar name={a.name} src={a.avatar} size={80} />
               <h3 className="mt-3 text-lg font-semibold">{a.name}</h3>
