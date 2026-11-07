@@ -72,6 +72,17 @@ export function createApp() {
   if (fs.existsSync(dist)) {
     app.use(express.static(dist, { index: false, maxAge: '1h' }));
     app.get(/^(?!\/api|\/uploads).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  } else if (config.isProd) {
+    // Em produção sem a pasta dist: explica o problema em vez de um "Not Found" genérico
+    console.error('[aviso] Pasta dist/ não encontrada. Configure o Build Command: npm ci --include=dev && npm run build');
+    app.get(/^(?!\/api|\/uploads).*/, (_req, res) =>
+      res.status(503).type('html').send(
+        '<meta charset="utf-8"><meta name="viewport" content="width=device-width"><body style="font-family:sans-serif;padding:24px;background:#0f0d0b;color:#f4eee6">' +
+          '<h2>Walisson Imóveis: front-end não compilado</h2><p>A API está no ar, mas o site não foi gerado.</p>' +
+          '<p>No Render, em <b>Settings → Build Command</b>, use:</p><pre style="background:#231f1b;padding:12px;border-radius:8px;white-space:pre-wrap">npm ci --include=dev &amp;&amp; npm run build</pre>' +
+          '<p>Depois toque em <b>Manual Deploy → Deploy latest commit</b>.</p></body>',
+      ),
+    );
   }
 
   // Limpeza periódica de sessões e tokens expirados
