@@ -14,7 +14,8 @@ type Param = string | number | bigint | null | Uint8Array | ArrayBuffer;
 
 const remoteUrl = process.env.TURSO_DATABASE_URL?.trim();
 let url: string;
-if (remoteUrl) url = remoteUrl;
+// libsql://… → https://… (conexão HTTP: funciona atrás de qualquer proxy e não depende de WebSocket)
+if (remoteUrl) url = remoteUrl.replace(/^libsql:\/\//, 'https://');
 else if (process.env.NODE_TEST) url = `file:${path.join(os.tmpdir(), `wi-test-${process.pid}-${Date.now()}.db`)}`;
 else {
   fs.mkdirSync(path.dirname(config.databasePath), { recursive: true });
