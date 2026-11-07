@@ -9,6 +9,8 @@ import type { AddressInfo } from 'node:net';
 const { seed } = await import('../src/seed.ts');
 const { createApp } = await import('../src/app.ts');
 
+const { ready } = await import('../src/db.ts');
+await ready;
 await seed();
 const server = createApp().listen(0);
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;

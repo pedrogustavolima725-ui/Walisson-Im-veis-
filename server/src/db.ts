@@ -1,15 +1,27 @@
-import { DatabaseSync } from 'node:sqlite';
+import { createClient, type Client, type InStatement, type Transaction } from '@libsql/client';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { config } from './config.ts';
 
-type Param = string | number | bigint | null | Uint8Array;
+/*
+ * Banco de dados: SQLite local (arquivo) em desenvolvimento ou Turso (SQLite na
+ * nuvem, plano gratuito) em produção — mesma API e mesmo SQL.
+ *   TURSO_DATABASE_URL=libsql://...  TURSO_AUTH_TOKEN=...
+ */
+type Param = string | number | bigint | null | Uint8Array | ArrayBuffer;
 
-fs.mkdirSync(path.dirname(config.databasePath), { recursive: true });
-fs.mkdirSync(config.uploadDir, { recursive: true });
-
-export const db = new DatabaseSync(process.env.NODE_TEST ? ':memory:' : config.databasePath);
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+const remoteUrl = process.env.TURSO_DATABASE_URL?.trim();
+let url: string;
+if (remoteUrl) url = remoteUrl;
+else if (process.env.NODE_TEST) url = `file:${path.join(os.tmpdir(), `wi-test-${process.pid}-${Date.now()}.db`)}`;
+else {
+  fs.mkdirSync(path.dirname(config.databasePath), { recursive: true });
+  url = `file:${config.databasePath}`;
+}
+export const isRemoteDb = !!remoteUrl;
+export const client: Client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN?.trim() || undefined });
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -228,29 +240,51 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
+
+-- Fotos enviadas (guardadas no banco para sobreviver a reinícios do servidor)
+CREATE TABLE IF NOT EXISTS files (
+  name TEXT PRIMARY KEY,
+  mime TEXT NOT NULL,
+  data BLOB NOT NULL,
+  size INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
 `;
 
-db.exec(SCHEMA);
+/** Cria/atualiza as tabelas. Chamado uma vez na inicialização. */
+export const ready = (async () => {
+  if (!isRemoteDb) await client.executeMultiple('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+  await client.executeMultiple(SCHEMA);
+})();
 
-export function all<T = any>(sql: string, ...params: Param[]): T[] {
-  return db.prepare(sql).all(...params) as T[];
+// Dentro de tx(), as consultas usam a transação ativa (sem precisar passá-la adiante)
+const txStore = new AsyncLocalStorage<Transaction>();
+const exec = (stmt: InStatement) => (txStore.getStore() ?? client).execute(stmt);
+const toPlain = (rs: { columns: string[]; rows: ArrayLike<unknown>[] }) =>
+  rs.rows.map((row) => Object.fromEntries(rs.columns.map((c, i) => [c, (row as unknown as unknown[])[i]])));
+
+export async function all<T = any>(sql: string, ...params: Param[]): Promise<T[]> {
+  return toPlain(await exec({ sql, args: params as never })) as T[];
 }
-export function get<T = any>(sql: string, ...params: Param[]): T | undefined {
-  return db.prepare(sql).get(...params) as T | undefined;
+export async function get<T = any>(sql: string, ...params: Param[]): Promise<T | undefined> {
+  return (await all<T>(sql, ...params))[0];
 }
-export function run(sql: string, ...params: Param[]) {
-  const r = db.prepare(sql).run(...params);
-  return { id: Number(r.lastInsertRowid), changes: Number(r.changes) };
+export async function run(sql: string, ...params: Param[]) {
+  const r = await exec({ sql, args: params as never });
+  return { id: Number(r.lastInsertRowid ?? 0), changes: r.rowsAffected };
 }
-export function tx<T>(fn: () => T): T {
-  db.exec('BEGIN');
+export async function tx<T>(fn: () => Promise<T>): Promise<T> {
+  if (txStore.getStore()) return fn();
+  const t = await client.transaction('write');
   try {
-    const out = fn();
-    db.exec('COMMIT');
+    const out = await txStore.run(t, fn);
+    await t.commit();
     return out;
   } catch (e) {
-    db.exec('ROLLBACK');
+    await t.rollback().catch(() => {});
     throw e;
+  } finally {
+    t.close();
   }
 }
 export const now = () => Date.now();

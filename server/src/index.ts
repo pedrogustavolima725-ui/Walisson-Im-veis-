@@ -1,10 +1,12 @@
 import { config } from './config.ts';
 import { createApp } from './app.ts';
-import { get } from './db.ts';
+import { get, isRemoteDb, ready } from './db.ts';
 import { bootstrap } from './bootstrap.ts';
 import { seed } from './seed.ts';
 
-if (process.env.SEED_DEMO === 'true' && !get('SELECT id FROM users LIMIT 1')) {
+await ready;
+console.log(`  Banco de dados: ${isRemoteDb ? 'Turso (nuvem)' : 'arquivo local'}`);
+if (process.env.SEED_DEMO === 'true' && !await get('SELECT id FROM users LIMIT 1')) {
   console.log('Banco vazio — populando dados de demonstração (SEED_DEMO=true)...');
   await seed();
 }

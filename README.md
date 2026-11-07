@@ -8,7 +8,7 @@ Visual inspirado em apps imobiliários premium: tema escuro café/dourado com te
 
 ## Como rodar
 
-Requisitos: **Node.js 22.13 ou superior** (usa o SQLite embutido do Node, sem instalar banco).
+Requisitos: **Node.js 20 ou superior**. O banco é SQLite (arquivo local em desenvolvimento, sem instalar nada; [Turso](https://turso.tech) na nuvem em produção).
 
 ```bash
 npm install
@@ -107,15 +107,21 @@ data/                   banco SQLite e fotos enviadas (fora do git)
 
 ---
 
-## Colocando em produção
+## Colocando em produção (grátis)
 
-1. Copie `.env.example` para `.env` e ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL`, `NODE_ENV=production` e `TRUST_PROXY` (1 se estiver atrás de Nginx/Cloudflare). No Render, preencha essas variáveis no painel.
-2. `npm ci && npm run build && npm start`.
-3. Sirva **sempre via HTTPS** (o cookie de sessão usa `Secure` e prefixo `__Host-` em produção).
-4. Faça backup periódico da pasta `data/` (banco + fotos).
+**Banco de dados — Turso (gratuito, sem cartão, 5 GB):** os dados e as fotos ficam no Turso, então nada se perde quando o servidor reinicia.
+1. Crie a conta em turso.tech (entre com o GitHub) e crie um banco.
+2. Copie a **URL** (`libsql://...`) e gere um **token**.
+
+**Servidor — Render (plano Free):**
+1. New → Web Service → este repositório. Build: `npm ci --include=dev && npm run build` · Start: `npm start` · Instance Type: **Free**.
+2. Variáveis de ambiente: `NODE_VERSION=22`, `TRUST_PROXY=1`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`.
+3. Na primeira inicialização as tabelas são criadas no Turso e o administrador é cadastrado.
+
+No plano gratuito o servidor "dorme" após 15 min sem acesso; o primeiro acesso seguinte leva ~1 min. Os dados ficam no Turso e não são afetados. Para outro provedor, basta Node 22 + as mesmas variáveis; sempre via **HTTPS**.
 
 Pontos de integração deixados prontos:
 - **E-mail** (recuperação de senha): em `server/src/routes/auth.ts`, rota `/forgot`, troque o `console.log` pelo seu provedor (SES, SendGrid, Resend…). Em desenvolvimento o link aparece na própria tela.
-- **Fotos de demonstração**: o seed usa imagens do Unsplash por URL; os imóveis reais usam o upload próprio do app.
+- **Fotos**: reduzidas no aparelho (máx. 1600 px) e guardadas no banco; o seed de demonstração usa imagens do Unsplash por URL.
 - **Mapa**: OpenStreetMap/CARTO via Leaflet, sem chave de API.
 - **Termos de uso**: o texto em `/termos` é um modelo — revise com sua assessoria jurídica.

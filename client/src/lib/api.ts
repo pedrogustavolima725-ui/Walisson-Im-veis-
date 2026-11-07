@@ -47,9 +47,28 @@ export const qs = (o: Record<string, unknown>) => {
   return s ? `?${s}` : '';
 };
 
+/** Reduz fotos grandes no próprio aparelho (máx. 1600px, JPEG) antes de enviar: upload mais rápido e menos espaço no banco. */
+async function shrink(file: File, max = 1600): Promise<File> {
+  if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 350_000) return file;
+  try {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.82));
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+  } catch {
+    return file; // navegador sem suporte: envia o original
+  }
+}
+
 export async function uploadImages(files: FileList | File[]): Promise<string[]> {
   const fd = new FormData();
-  Array.from(files).forEach((f) => fd.append('files', f));
+  for (const f of await Promise.all(Array.from(files).map((f) => shrink(f)))) fd.append('files', f);
   const r = await api<{ urls: string[] }>('/properties/upload', { body: fd });
   return r.urls;
 }

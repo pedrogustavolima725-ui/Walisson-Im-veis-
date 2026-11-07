@@ -11,7 +11,7 @@ import { authRouter } from './routes/auth.ts';
 import { propertiesRouter } from './routes/properties.ts';
 import { agentsRouter, clientRouter } from './routes/client.ts';
 import { crmRouter } from './routes/crm.ts';
-import { run, now } from './db.ts';
+import { get, run, now } from './db.ts';
 
 export function createApp() {
   const app = express();
@@ -64,8 +64,18 @@ export function createApp() {
   api.use(errorHandler);
   app.use('/api', api);
 
-  // Uploads: servidos como arquivos estáticos, sem execução e com nosniff
-  app.use('/uploads', express.static(config.uploadDir, { maxAge: '30d', immutable: true, index: false, dotfiles: 'deny' }));
+  // Fotos enviadas: guardadas no banco (sobrevivem a reinícios do servidor), servidas com nosniff
+  app.get('/uploads/:name', async (req, res, next) => {
+    try {
+      const name = String(req.params.name);
+      if (!/^[\w-]+\.(jpg|png|webp)$/.test(name)) return res.status(404).end();
+      const f = await get<{ mime: string; data: ArrayBuffer }>('SELECT mime, data FROM files WHERE name = ?', name);
+      if (!f) return res.status(404).end();
+      res.setHeader('Content-Type', f.mime);
+      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
+      res.send(Buffer.from(f.data));
+    } catch (e) { next(e); }
+  });
 
   // Front-end compilado (produção)
   const dist = path.resolve(process.cwd(), 'dist');
@@ -86,10 +96,11 @@ export function createApp() {
   }
 
   // Limpeza periódica de sessões e tokens expirados
-  const cleanup = () => {
-    run('DELETE FROM sessions WHERE expires_at < ?', now());
-    run('DELETE FROM password_resets WHERE expires_at < ?', now() - 86400_000);
-  };
+  const cleanup = () =>
+    Promise.all([
+      run('DELETE FROM sessions WHERE expires_at < ?', now()),
+      run('DELETE FROM password_resets WHERE expires_at < ?', now() - 86400_000),
+    ]).catch((e) => console.error('[limpeza]', e.message));
   cleanup();
   setInterval(cleanup, 60 * 60_000).unref();
 

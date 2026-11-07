@@ -1,5 +1,5 @@
 import { config } from './config.ts';
-import { get, run, now } from './db.ts';
+import { get, run, now, ready } from './db.ts';
 import { hashPassword, passwordProblems } from './lib/crypto.ts';
 
 /**
@@ -8,7 +8,8 @@ import { hashPassword, passwordProblems } from './lib/crypto.ts';
  * O banco começa vazio: imóveis, corretores e leads são cadastrados pelo admin.
  */
 export async function bootstrap() {
-  if (get('SELECT id FROM users LIMIT 1')) return;
+  await ready;
+  if (await get('SELECT id FROM users LIMIT 1')) return;
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.ADMIN_PASSWORD;
   const name = process.env.ADMIN_NAME?.trim() || 'Walisson';
@@ -19,10 +20,10 @@ export async function bootstrap() {
   const problems = passwordProblems(password);
   if (problems.length) throw new Error(`ADMIN_PASSWORD fraca — precisa de: ${problems.join(', ')}`);
   const t = now();
-  run(
+  await run(
     "INSERT INTO users (name, email, password_hash, role, terms_accepted_at, created_at, updated_at) VALUES (?,?,?, 'admin', ?,?,?)",
     name, email, await hashPassword(password), t, t, t,
   );
-  run("INSERT INTO audit_logs (action, meta, created_at) VALUES ('system.bootstrap', ?, ?)", JSON.stringify({ email }), t);
+  await run("INSERT INTO audit_logs (action, meta, created_at) VALUES ('system.bootstrap', ?, ?)", JSON.stringify({ email }), t);
   console.log(`  Administrador criado: ${email}${config.isProd ? '' : ' (ative o 2FA em Minha conta → Segurança)'}`);
 }

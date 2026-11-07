@@ -1,10 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import { z } from 'zod';
-import { config } from '../config.ts';
 import { all, get, run, now, tx } from '../db.ts';
 import { isStaff, requireAuth, requireRole } from '../lib/auth.ts';
 import { audit, notify, notifyStaff, upsertLeadForClient } from '../lib/events.ts';
@@ -20,13 +17,17 @@ const PUBLIC_COLS = `p.id, p.code, p.title, p.purpose, p.type, p.status, p.price
   p.bathrooms, p.parking, p.area, p.land_area, p.neighborhood, p.city, p.state, p.lat, p.lng, p.featured, p.views, p.created_at,
   p.accepts_financing, p.accepts_pets, p.furnished`;
 
-function cover(id: number) {
-  return get<{ url: string }>('SELECT url FROM property_images WHERE property_id = ? ORDER BY position, id LIMIT 1', id)?.url ?? null;
-}
 
-export function withExtras<T extends { id: number }>(rows: T[], userId?: number) {
-  const favs = userId ? new Set(all<{ property_id: number }>('SELECT property_id FROM favorites WHERE user_id = ?', userId).map((f) => f.property_id)) : new Set<number>();
-  return rows.map((r) => ({ ...r, cover: cover(r.id), favorite: favs.has(r.id) }));
+export async function withExtras<T extends { id: number }>(rows: T[], userId?: number) {
+  if (!rows.length) return [];
+  const favs = userId ? new Set((await all<{ property_id: number }>('SELECT property_id FROM favorites WHERE user_id = ?', userId)).map((f) => f.property_id)) : new Set<number>();
+  // Uma consulta só para todas as capas (evita uma ida ao banco por imóvel)
+  const ids = rows.map((r) => r.id);
+  const covers = new Map<number, string>();
+  for (const img of await all<{ property_id: number; url: string }>(
+    `SELECT property_id, url FROM property_images WHERE property_id IN (${ids.map(() => '?').join(',')}) ORDER BY position DESC, id DESC`, ...ids,
+  )) covers.set(img.property_id, img.url);
+  return rows.map((r) => ({ ...r, cover: covers.get(r.id) ?? null, favorite: favs.has(r.id) }));
 }
 
 /* ---------------- Busca pública ---------------- */
@@ -53,7 +54,7 @@ const searchSchema = z.object({
   ids: z.string().max(200).optional(),
 });
 
-propertiesRouter.get('/', (req, res) => {
+propertiesRouter.get('/', async (req, res) => {
   const f = parse(searchSchema, req.query);
   const where: string[] = ["p.status IN ('disponivel','reservado')"];
   const params: (string | number)[] = [];
@@ -94,47 +95,47 @@ propertiesRouter.get('/', (req, res) => {
   const limit = f.limit ?? 12;
   const page = f.page ?? 1;
   const w = where.join(' AND ');
-  const total = get<{ n: number }>(`SELECT COUNT(*) AS n FROM properties p WHERE ${w}`, ...params)!.n;
-  const rows = all(`SELECT ${PUBLIC_COLS} FROM properties p WHERE ${w} ORDER BY p.featured DESC, ${order} LIMIT ? OFFSET ?`, ...params, limit, (page - 1) * limit);
-  res.json({ items: withExtras(rows as { id: number }[], req.user?.id), total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+  const total = (await get<{ n: number }>(`SELECT COUNT(*) AS n FROM properties p WHERE ${w}`, ...params))!.n;
+  const rows = await all(`SELECT ${PUBLIC_COLS} FROM properties p WHERE ${w} ORDER BY p.featured DESC, ${order} LIMIT ? OFFSET ?`, ...params, limit, (page - 1) * limit);
+  res.json({ items: await withExtras(rows as { id: number }[], req.user?.id), total, page, pages: Math.max(1, Math.ceil(total / limit)) });
 });
 
 /* Metadados para filtros (cidades, bairros, faixas) */
-propertiesRouter.get('/meta', (_req, res) => {
-  const cities = all<{ city: string; state: string; n: number; cover: string | null }>(
+propertiesRouter.get('/meta', async (_req, res) => {
+  const cities = await all<{ city: string; state: string; n: number; cover: string | null }>(
     `SELECT p.city, p.state, COUNT(*) AS n,
        (SELECT url FROM property_images pi JOIN properties p2 ON p2.id = pi.property_id WHERE p2.city = p.city ORDER BY p2.featured DESC, pi.position LIMIT 1) AS cover
      FROM properties p WHERE p.status IN ('disponivel','reservado') GROUP BY p.city ORDER BY n DESC`,
   );
-  const neighborhoods = all<{ neighborhood: string; city: string; n: number }>(
+  const neighborhoods = await all<{ neighborhood: string; city: string; n: number }>(
     "SELECT neighborhood, city, COUNT(*) AS n FROM properties WHERE status IN ('disponivel','reservado') AND neighborhood != '' GROUP BY neighborhood, city ORDER BY n DESC LIMIT 30",
   );
-  const types = all("SELECT type, COUNT(*) AS n FROM properties WHERE status IN ('disponivel','reservado') GROUP BY type ORDER BY n DESC");
+  const types = await all("SELECT type, COUNT(*) AS n FROM properties WHERE status IN ('disponivel','reservado') GROUP BY type ORDER BY n DESC");
   res.json({ cities, neighborhoods, types });
 });
 
 /* ---------------- Detalhe ---------------- */
-propertiesRouter.get('/:id', (req, res) => {
+propertiesRouter.get('/:id', async (req, res) => {
   const id = idParam(req.params.id);
-  const p = get<any>(`SELECT ${PUBLIC_COLS}, p.description, p.address, p.zip, p.features, p.agent_id, p.owner_id FROM properties p WHERE p.id = ?`, id);
+  const p = await get<any>(`SELECT ${PUBLIC_COLS}, p.description, p.address, p.zip, p.features, p.agent_id, p.owner_id FROM properties p WHERE p.id = ?`, id);
   const staff = isStaff(req.user);
   if (!p) throw notFound('Imóvel não encontrado.');
   const visible = ['disponivel', 'reservado'].includes(p.status) || staff || (req.user && p.owner_id === req.user.id);
   if (!visible) throw notFound('Imóvel não encontrado.');
-  if (!staff) run('UPDATE properties SET views = views + 1 WHERE id = ?', id);
-  const images = all<{ id: number; url: string }>('SELECT id, url FROM property_images WHERE property_id = ? ORDER BY position, id', id);
+  if (!staff) await run('UPDATE properties SET views = views + 1 WHERE id = ?', id);
+  const images = await all<{ id: number; url: string }>('SELECT id, url FROM property_images WHERE property_id = ? ORDER BY position, id', id);
   const agent = p.agent_id
-    ? get('SELECT id, name, email, phone, avatar, creci, bio FROM users WHERE id = ? AND active = 1', p.agent_id)
+    ? await get('SELECT id, name, email, phone, avatar, creci, bio FROM users WHERE id = ? AND active = 1', p.agent_id)
     : null;
-  const similar = withExtras(
-    all<{ id: number }>(
+  const similar = await withExtras(
+    await all<{ id: number }>(
       `SELECT ${PUBLIC_COLS} FROM properties p WHERE p.id != ? AND p.status = 'disponivel' AND p.purpose = ? AND (p.city = ? OR p.type = ?)
        ORDER BY ABS(p.price - ?) LIMIT 6`,
       id, p.purpose, p.city, p.type, p.price,
     ),
     req.user?.id,
   );
-  const favorite = req.user ? !!get('SELECT 1 FROM favorites WHERE user_id = ? AND property_id = ?', req.user.id, id) : false;
+  const favorite = req.user ? !!await get('SELECT 1 FROM favorites WHERE user_id = ? AND property_id = ?', req.user.id, id) : false;
   // Endereço completo só é exibido para a equipe; o público vê bairro/cidade (privacidade do proprietário)
   if (!staff) delete p.address;
   delete p.owner_id;
@@ -142,19 +143,19 @@ propertiesRouter.get('/:id', (req, res) => {
 });
 
 /* ---------------- Favoritos ---------------- */
-propertiesRouter.post('/:id/favorite', requireAuth, (req, res) => {
+propertiesRouter.post('/:id/favorite', requireAuth, async (req, res) => {
   const id = idParam(req.params.id);
-  if (!get('SELECT 1 FROM properties WHERE id = ?', id)) throw notFound();
-  const exists = get('SELECT 1 FROM favorites WHERE user_id = ? AND property_id = ?', req.user!.id, id);
-  if (exists) run('DELETE FROM favorites WHERE user_id = ? AND property_id = ?', req.user!.id, id);
-  else run('INSERT INTO favorites (user_id, property_id, created_at) VALUES (?,?,?)', req.user!.id, id, now());
+  if (!await get('SELECT 1 FROM properties WHERE id = ?', id)) throw notFound();
+  const exists = await get('SELECT 1 FROM favorites WHERE user_id = ? AND property_id = ?', req.user!.id, id);
+  if (exists) await run('DELETE FROM favorites WHERE user_id = ? AND property_id = ?', req.user!.id, id);
+  else await run('INSERT INTO favorites (user_id, property_id, created_at) VALUES (?,?,?)', req.user!.id, id, now());
   res.json({ favorite: !exists });
 });
 
 /* ---------------- Tenho interesse (gera lead) ---------------- */
-propertiesRouter.post('/:id/interest', (req, res) => {
+propertiesRouter.post('/:id/interest', async (req, res) => {
   const id = idParam(req.params.id);
-  const prop = get<{ id: number; title: string; code: string }>('SELECT id, title, code FROM properties WHERE id = ?', id);
+  const prop = await get<{ id: number; title: string; code: string }>('SELECT id, title, code FROM properties WHERE id = ?', id);
   if (!prop) throw notFound();
   const body = parse(
     z.object({
@@ -167,7 +168,7 @@ propertiesRouter.post('/:id/interest', (req, res) => {
     }),
     req.user ? { name: req.user.name, email: req.user.email, phone: req.user.phone ?? '', ...req.body } : req.body,
   );
-  const lead = upsertLeadForClient({
+  const lead = await upsertLeadForClient({
     userId: req.user?.id, name: body.name, email: body.email, phone: body.phone, propertyId: id,
     source: req.user ? 'app' : 'site', message: body.message, activity: `Demonstrou interesse no imóvel ${prop.code} — ${prop.title}${body.message ? `: "${body.message}"` : ''}`,
   });
@@ -208,25 +209,37 @@ const propertySchema = z.object({
   images: z.array(z.string().max(500).regex(/^(\/uploads\/[\w.-]+|https:\/\/[\w.-]+\/[\w./%?=&-]*)$/, 'URL de imagem inválida')).max(30).optional(),
 });
 
-function nextCode() {
-  const last = get<{ n: number }>("SELECT COALESCE(MAX(CAST(SUBSTR(code, 4) AS INTEGER)), 1000) AS n FROM properties WHERE code LIKE 'WI-%'")!.n;
+async function nextCode() {
+  const last = (await get<{ n: number }>("SELECT COALESCE(MAX(CAST(SUBSTR(code, 4) AS INTEGER)), 1000) AS n FROM properties WHERE code LIKE 'WI-%'"))!.n;
   return `WI-${last + 1}`;
 }
 
-function saveImages(propertyId: number, images?: string[]) {
-  if (!images) return;
-  run('DELETE FROM property_images WHERE property_id = ?', propertyId);
-  images.forEach((url, i) => run('INSERT INTO property_images (property_id, url, position) VALUES (?,?,?)', propertyId, url, i));
+/** Apaga do banco as fotos enviadas que deixaram de ser usadas. */
+async function dropFiles(urls: string[]) {
+  for (const u of urls) {
+    const name = u.match(/^\/uploads\/([\w-]+\.(?:jpg|png|webp))$/)?.[1];
+    if (!name) continue;
+    const used = await get("SELECT 1 FROM property_images WHERE url = ? UNION SELECT 1 FROM users WHERE avatar = ?", u, u);
+    if (!used) await run('DELETE FROM files WHERE name = ?', name);
+  }
 }
 
-propertiesRouter.get('/manage/list', requireRole('corretor', 'admin'), (req, res) => {
+async function saveImages(propertyId: number, images?: string[]) {
+  if (!images) return;
+  const old = (await all<{ url: string }>('SELECT url FROM property_images WHERE property_id = ?', propertyId)).map((r) => r.url);
+  await run('DELETE FROM property_images WHERE property_id = ?', propertyId);
+  for (const [i, url] of images.entries()) await run('INSERT INTO property_images (property_id, url, position) VALUES (?,?,?)', propertyId, url, i);
+  await dropFiles(old.filter((u) => !images.includes(u)));
+}
+
+propertiesRouter.get('/manage/list', requireRole('corretor', 'admin'), async (req, res) => {
   const f = parse(z.object({ q: zStr(100).optional(), status: z.enum(STATUSES).optional(), mine: zBool.optional() }), req.query);
   const where = ['1=1'];
   const params: (string | number)[] = [];
   if (f.q) { where.push('(p.title LIKE ? OR p.code LIKE ? OR p.neighborhood LIKE ? OR p.city LIKE ?)'); const l = `%${f.q}%`; params.push(l, l, l, l); }
   if (f.status) { where.push('p.status = ?'); params.push(f.status); }
   if (f.mine) { where.push('p.agent_id = ?'); params.push(req.user!.id); }
-  const rows = all<{ id: number }>(
+  const rows = await all<{ id: number }>(
     `SELECT ${PUBLIC_COLS}, p.agent_id, a.name AS agent_name, o.name AS owner_name,
       (SELECT COUNT(*) FROM leads l WHERE l.property_id = p.id) AS leads_count,
       (SELECT COUNT(*) FROM favorites f WHERE f.property_id = p.id) AS favorites_count
@@ -234,46 +247,46 @@ propertiesRouter.get('/manage/list', requireRole('corretor', 'admin'), (req, res
      WHERE ${where.join(' AND ')} ORDER BY CASE p.status WHEN 'pendente' THEN 0 ELSE 1 END, p.updated_at DESC`,
     ...params,
   );
-  res.json(withExtras(rows));
+  res.json(await withExtras(rows));
 });
 
-propertiesRouter.get('/manage/:id', requireRole('corretor', 'admin'), (req, res) => {
-  const p = get<any>('SELECT * FROM properties WHERE id = ?', idParam(req.params.id));
+propertiesRouter.get('/manage/:id', requireRole('corretor', 'admin'), async (req, res) => {
+  const p = await get<any>('SELECT * FROM properties WHERE id = ?', idParam(req.params.id));
   if (!p) throw notFound();
-  const images = all<{ url: string }>('SELECT url FROM property_images WHERE property_id = ? ORDER BY position, id', p.id).map((i) => i.url);
+  const images = (await all<{ url: string }>('SELECT url FROM property_images WHERE property_id = ? ORDER BY position, id', p.id)).map((i) => i.url);
   res.json({ ...p, features: JSON.parse(p.features), images, featured: !!p.featured, accepts_financing: !!p.accepts_financing, accepts_pets: !!p.accepts_pets, furnished: !!p.furnished });
 });
 
-propertiesRouter.post('/', requireRole('corretor', 'admin'), (req, res) => {
+propertiesRouter.post('/', requireRole('corretor', 'admin'), async (req, res) => {
   const b = parse(propertySchema, req.body);
   const t = now();
   const agentId = req.user!.role === 'admin' ? (b.agent_id ?? req.user!.id) : req.user!.id;
-  const id = tx(() => {
-    const r = run(
+  const id = await tx(async () => {
+    const r = await run(
       `INSERT INTO properties (code, title, description, purpose, type, status, price, condo_fee, iptu, bedrooms, suites, bathrooms, parking, area, land_area,
         address, neighborhood, city, state, zip, lat, lng, features, featured, accepts_financing, accepts_pets, furnished, agent_id, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      nextCode(), b.title, b.description, b.purpose, b.type, b.status, b.price, b.condo_fee, b.iptu, b.bedrooms, b.suites, b.bathrooms, b.parking,
+      await nextCode(), b.title, b.description, b.purpose, b.type, b.status, b.price, b.condo_fee, b.iptu, b.bedrooms, b.suites, b.bathrooms, b.parking,
       b.area, b.land_area, b.address, b.neighborhood, b.city, b.state.toUpperCase(), b.zip, b.lat ?? null, b.lng ?? null, JSON.stringify(b.features),
       b.featured ? 1 : 0, b.accepts_financing ? 1 : 0, b.accepts_pets ? 1 : 0, b.furnished ? 1 : 0, agentId, t, t,
     );
-    saveImages(r.id, b.images);
+    await saveImages(r.id, b.images);
     return r.id;
   });
-  audit(req, 'property.create', { id, title: b.title });
-  matchSavedSearches(id);
+  await audit(req, 'property.create', { id, title: b.title });
+  await matchSavedSearches(id);
   res.status(201).json({ id });
 });
 
-propertiesRouter.put('/:id', requireRole('corretor', 'admin'), (req, res) => {
+propertiesRouter.put('/:id', requireRole('corretor', 'admin'), async (req, res) => {
   const id = idParam(req.params.id);
-  const cur = get<{ agent_id: number | null; status: string; owner_id: number | null; title: string; price: number }>('SELECT agent_id, status, owner_id, title, price FROM properties WHERE id = ?', id);
+  const cur = await get<{ agent_id: number | null; status: string; owner_id: number | null; title: string; price: number }>('SELECT agent_id, status, owner_id, title, price FROM properties WHERE id = ?', id);
   if (!cur) throw notFound();
   if (req.user!.role !== 'admin' && cur.agent_id !== req.user!.id) throw forbidden('Apenas o corretor responsável ou um administrador pode editar este imóvel.');
   const b = parse(propertySchema, req.body);
   const agentId = req.user!.role === 'admin' ? (b.agent_id ?? cur.agent_id) : cur.agent_id;
-  tx(() => {
-    run(
+  await tx(async () => {
+    await run(
       `UPDATE properties SET title=?, description=?, purpose=?, type=?, status=?, price=?, condo_fee=?, iptu=?, bedrooms=?, suites=?, bathrooms=?, parking=?,
         area=?, land_area=?, address=?, neighborhood=?, city=?, state=?, zip=?, lat=?, lng=?, features=?, featured=?, accepts_financing=?, accepts_pets=?,
         furnished=?, agent_id=?, updated_at=? WHERE id=?`,
@@ -281,55 +294,63 @@ propertiesRouter.put('/:id', requireRole('corretor', 'admin'), (req, res) => {
       b.address, b.neighborhood, b.city, b.state.toUpperCase(), b.zip, b.lat ?? null, b.lng ?? null, JSON.stringify(b.features), b.featured ? 1 : 0,
       b.accepts_financing ? 1 : 0, b.accepts_pets ? 1 : 0, b.furnished ? 1 : 0, agentId, now(), id,
     );
-    saveImages(id, b.images);
+    await saveImages(id, b.images);
   });
   if (cur.status === 'pendente' && b.status === 'disponivel') {
-    notify(cur.owner_id, { type: 'imovel', title: 'Seu imóvel foi aprovado e publicado!', body: b.title, link: `/imovel/${id}` });
-    matchSavedSearches(id);
+    await notify(cur.owner_id, { type: 'imovel', title: 'Seu imóvel foi aprovado e publicado!', body: b.title, link: `/imovel/${id}` });
+    await matchSavedSearches(id);
   }
   if (b.price < cur.price) {
     // avisa quem favoritou sobre redução de preço
-    for (const f of all<{ user_id: number }>('SELECT user_id FROM favorites WHERE property_id = ?', id)) {
-      notify(f.user_id, { type: 'preco', title: 'Preço reduzido em um favorito!', body: `${b.title} agora por ${b.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, link: `/imovel/${id}` });
+    for (const f of await all<{ user_id: number }>('SELECT user_id FROM favorites WHERE property_id = ?', id)) {
+      await notify(f.user_id, { type: 'preco', title: 'Preço reduzido em um favorito!', body: `${b.title} agora por ${b.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, link: `/imovel/${id}` });
     }
   }
-  audit(req, 'property.update', { id, status: b.status });
+  await audit(req, 'property.update', { id, status: b.status });
   res.json({ ok: true });
 });
 
-propertiesRouter.delete('/:id', requireRole('admin'), (req, res) => {
+propertiesRouter.delete('/:id', requireRole('admin'), async (req, res) => {
   const id = idParam(req.params.id);
-  run('DELETE FROM properties WHERE id = ?', id);
-  audit(req, 'property.delete', { id });
+  // Remove dependências explicitamente (independe de o banco aplicar ON DELETE CASCADE)
+  const photos = (await all<{ url: string }>('SELECT url FROM property_images WHERE property_id = ?', id)).map((r) => r.url);
+  await tx(async () => {
+    for (const t of ['property_images', 'favorites', 'visits', 'proposals']) await run(`DELETE FROM ${t} WHERE property_id = ?`, id);
+    await run('UPDATE leads SET property_id = NULL WHERE property_id = ?', id);
+    await run('UPDATE conversations SET property_id = NULL WHERE property_id = ?', id);
+    await run('DELETE FROM properties WHERE id = ?', id);
+  });
+  await dropFiles(photos);
+  await audit(req, 'property.delete', { id });
   res.json({ ok: true });
 });
 
 /* ---------------- Proprietário: anunciar imóvel ---------------- */
-propertiesRouter.post('/submit', requireAuth, (req, res) => {
+propertiesRouter.post('/submit', requireAuth, async (req, res) => {
   const b = parse(
     propertySchema.pick({ title: true, description: true, purpose: true, type: true, price: true, bedrooms: true, bathrooms: true, parking: true, area: true, address: true, neighborhood: true, city: true, state: true, images: true }),
     req.body,
   );
   const t = now();
   const agentId = null;
-  const { id } = run(
+  const { id } = await run(
     `INSERT INTO properties (code, title, description, purpose, type, status, price, bedrooms, bathrooms, parking, area, address, neighborhood, city, state, owner_id, agent_id, created_at, updated_at)
      VALUES (?,?,?,?,?, 'pendente', ?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    nextCode(), b.title, b.description, b.purpose, b.type, b.price, b.bedrooms, b.bathrooms, b.parking, b.area, b.address, b.neighborhood, b.city, b.state.toUpperCase(), req.user!.id, agentId, t, t,
+    await nextCode(), b.title, b.description, b.purpose, b.type, b.price, b.bedrooms, b.bathrooms, b.parking, b.area, b.address, b.neighborhood, b.city, b.state.toUpperCase(), req.user!.id, agentId, t, t,
   );
-  saveImages(id, b.images);
-  const lead = upsertLeadForClient({
+  await saveImages(id, b.images);
+  const lead = await upsertLeadForClient({
     userId: req.user!.id, name: req.user!.name, email: req.user!.email, phone: req.user!.phone, source: 'captacao', interest: 'venda',
     activity: `Proprietário enviou imóvel para captação: ${b.title}`,
   });
-  run('UPDATE properties SET agent_id = ? WHERE id = ?', lead.agent_id, id);
-  notifyStaff({ type: 'captacao', title: 'Novo imóvel para avaliação', body: b.title, link: `/crm/imoveis/${id}` });
-  audit(req, 'property.submit', { id });
+  await run('UPDATE properties SET agent_id = ? WHERE id = ?', lead.agent_id, id);
+  await notifyStaff({ type: 'captacao', title: 'Novo imóvel para avaliação', body: b.title, link: `/crm/imoveis/${id}` });
+  await audit(req, 'property.submit', { id });
   res.status(201).json({ id });
 });
 
-propertiesRouter.get('/mine/submissions', requireAuth, (req, res) => {
-  res.json(withExtras(all<{ id: number }>(`SELECT ${PUBLIC_COLS} FROM properties p WHERE p.owner_id = ? ORDER BY p.created_at DESC`, req.user!.id)));
+propertiesRouter.get('/mine/submissions', requireAuth, async (req, res) => {
+  res.json(await withExtras(await all<{ id: number }>(`SELECT ${PUBLIC_COLS} FROM properties p WHERE p.owner_id = ? ORDER BY p.created_at DESC`, req.user!.id)));
 });
 
 /* ---------------- Upload de fotos ---------------- */
@@ -343,7 +364,7 @@ function detectImage(buf: Buffer): string | null {
   return null; // SVG e outros formatos são recusados (risco de XSS)
 }
 
-propertiesRouter.post('/upload', requireAuth, upload.array('files', 12), (req, res) => {
+propertiesRouter.post('/upload', requireAuth, upload.array('files', 12), async (req, res) => {
   const files = (req.files as Express.Multer.File[]) ?? [];
   if (!files.length) throw badRequest('Nenhum arquivo enviado.');
   const urls: string[] = [];
@@ -352,18 +373,18 @@ propertiesRouter.post('/upload', requireAuth, upload.array('files', 12), (req, r
     const ext = detectImage(f.buffer);
     if (!ext) throw badRequest(`"${f.originalname.slice(0, 60)}" não é uma imagem JPG, PNG ou WEBP válida.`);
     const name = `${crypto.randomUUID()}.${ext}`;
-    fs.writeFileSync(path.join(config.uploadDir, name), f.buffer, { mode: 0o644 });
+    await run('INSERT INTO files (name, mime, data, size, created_at) VALUES (?,?,?,?,?)', name, `image/${ext === 'jpg' ? 'jpeg' : ext}`, new Uint8Array(f.buffer), f.size, now());
     urls.push(`/uploads/${name}`);
   }
-  audit(req, 'upload.images', { count: urls.length });
+  await audit(req, 'upload.images', { count: urls.length });
   res.status(201).json({ urls });
 });
 
 /* ---------------- Alertas de busca ---------------- */
-export function matchSavedSearches(propertyId: number) {
-  const p = get<any>('SELECT * FROM properties WHERE id = ?', propertyId);
+export async function matchSavedSearches(propertyId: number) {
+  const p = await get<any>('SELECT * FROM properties WHERE id = ?', propertyId);
   if (!p || p.status !== 'disponivel') return;
-  for (const s of all<{ id: number; user_id: number; name: string; filters: string }>('SELECT * FROM saved_searches WHERE alert = 1')) {
+  for (const s of await all<{ id: number; user_id: number; name: string; filters: string }>('SELECT * FROM saved_searches WHERE alert = 1')) {
     const f = JSON.parse(s.filters);
     const ok =
       (!f.purpose || f.purpose === p.purpose) &&
@@ -372,6 +393,6 @@ export function matchSavedSearches(propertyId: number) {
       (!f.maxPrice || p.price <= Number(f.maxPrice)) &&
       (!f.minPrice || p.price >= Number(f.minPrice)) &&
       (!f.bedrooms || p.bedrooms >= Number(f.bedrooms));
-    if (ok) notify(s.user_id, { type: 'alerta', title: `Novo imóvel no seu alerta "${s.name}"`, body: p.title, link: `/imovel/${p.id}` });
+    if (ok) await notify(s.user_id, { type: 'alerta', title: `Novo imóvel no seu alerta "${s.name}"`, body: p.title, link: `/imovel/${p.id}` });
   }
 }

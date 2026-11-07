@@ -39,6 +39,7 @@ class Client {
 }
 
 before(async () => {
+  await (await import('../src/db.ts')).ready;
   await seed();
   server = createApp().listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -167,6 +168,25 @@ test('upload recusa arquivos que não são imagem (ex.: SVG/HTML disfarçado)', 
   const r2 = await c.req('/properties/upload', { raw: fd2 });
   assert.equal(r2.status, 201);
   assert.match(r2.body.urls[0], /^\/uploads\/[\w-]+\.png$/);
+  // a foto fica guardada no banco e é servida de volta, idêntica
+  const img = await fetch(base + r2.body.urls[0]);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+  assert.deepEqual(Buffer.from(await img.arrayBuffer()), png);
+  assert.equal((await fetch(base + '/uploads/..%2F..%2Fetc%2Fpasswd')).status, 404);
+});
+
+test('excluir imóvel remove fotos, favoritos e visitas vinculados', async () => {
+  const admin = new Client();
+  await admin.login('admin@walissonimoveis.com.br');
+  const before = await admin.req('/crm/leads');
+  const withProp = before.body.find((l: any) => l.property_id === 1);
+  assert.equal((await admin.req('/properties/1', { method: 'DELETE' })).status, 200);
+  assert.equal((await new Client().req('/properties/1')).status, 404);
+  if (withProp) assert.equal((await admin.req(`/crm/leads/${withProp.id}`)).body.property_id, null, 'lead continua, sem o imóvel');
+  const cli = new Client();
+  await cli.login('cliente@walissonimoveis.com.br');
+  assert.ok((await cli.req('/me/favorites')).body.every((p: any) => p.id !== 1));
 });
 
 test('exportação CSV neutraliza injeção de fórmulas', async () => {
