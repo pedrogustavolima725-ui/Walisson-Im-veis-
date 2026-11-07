@@ -104,7 +104,7 @@ function FormError({ msg }: { msg: string | null }) {
 
 /* ============================ Login + 2FA ============================ */
 export function Login() {
-  const { user, setSession, ready } = useAuth();
+  const { user, setSession, ready, demo } = useAuth();
   const nav = useNavigate();
   const loc = useLocation();
   const toast = useToast();
@@ -179,7 +179,7 @@ export function Login() {
         </div>
         <Button type="submit" size="lg" className="w-full" loading={loading}>Entrar</Button>
         <p className="text-center text-sm text-muted">Não tem conta? <Link to="/cadastro" state={loc.state} className="font-semibold text-text hover:text-accent">Criar conta</Link></p>
-        <DemoAccounts onPick={(e) => { setEmail(e); setPassword('Demo@2026'); }} />
+        {demo && <DemoAccounts onPick={(e) => { setEmail(e); setPassword('Demo@2026'); }} />}
       </form>
     </AuthShell>
   );

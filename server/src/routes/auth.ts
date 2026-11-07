@@ -38,6 +38,7 @@ authRouter.get('/me', (req, res) => {
     user: req.user ?? null,
     csrfToken: req.session?.csrf_token ?? null,
     mfaPending: !!req.session?.mfa_pending,
+    demo: config.demo,
   });
 });
 
@@ -168,7 +169,7 @@ authRouter.post('/forgot', resetLimiter, (req, res) => {
     const url = `${config.appUrl}/redefinir-senha?token=${token}`;
     // Integração de e-mail: substitua este log pelo seu provedor (SES, SendGrid, Resend...)
     console.log(`[e-mail] Redefinição de senha para ${email}: ${url}`);
-    if (!config.isProd) devResetUrl = url;
+    if (config.demo) devResetUrl = url;
     audit(req, 'auth.password_reset_requested', {}, user.id);
   }
   // Mesma resposta exista ou não a conta (evita enumeração de usuários)

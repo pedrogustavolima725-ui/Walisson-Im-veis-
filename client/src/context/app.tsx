@@ -21,6 +21,7 @@ interface AuthCtx {
   user: User | null;
   ready: boolean;
   isStaff: boolean;
+  demo: boolean;
   setSession: (user: User | null, csrf: string | null) => void;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
@@ -30,6 +31,7 @@ const AuthContext = createContext<AuthCtx>(null!);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
+  const [demo, setDemo] = useState(false);
 
   const setSession = useCallback((u: User | null, csrf: string | null) => {
     setUser(u);
@@ -38,8 +40,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const r = await api<{ user: User | null; csrfToken: string | null }>('/auth/me');
+      const r = await api<{ user: User | null; csrfToken: string | null; demo?: boolean }>('/auth/me');
       setSession(r.user, r.csrfToken);
+      setDemo(!!r.demo);
     } catch {
       setSession(null, null);
     } finally {
@@ -59,8 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh, setSession]);
 
   const value = useMemo(
-    () => ({ user, ready, isStaff: user?.role === 'corretor' || user?.role === 'admin', setSession, refresh, logout }),
-    [user, ready, setSession, refresh, logout],
+    () => ({ user, ready, isStaff: user?.role === 'corretor' || user?.role === 'admin', demo, setSession, refresh, logout }),
+    [user, ready, demo, setSession, refresh, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

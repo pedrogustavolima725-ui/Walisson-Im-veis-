@@ -14,8 +14,10 @@ const isProd = process.env.NODE_ENV === 'production';
 
 export const config = {
   isProd,
+  // Modo demonstração: exibe contas de teste no login e o link de redefinição de senha na tela
+  demo: process.env.DEMO_MODE === 'true' || !isProd,
   port: Number(process.env.PORT ?? 3333),
-  appUrl: process.env.APP_URL ?? (isProd ? 'http://localhost:3333' : 'http://localhost:5173'),
+  appUrl: process.env.APP_URL ?? process.env.RENDER_EXTERNAL_URL ?? (isProd ? 'http://localhost:3333' : 'http://localhost:5173'),
   databasePath: process.env.DATABASE_PATH ?? path.resolve(process.cwd(), 'data/walisson.db'),
   uploadDir: path.resolve(process.cwd(), 'data/uploads'),
   trustProxy: Number(process.env.TRUST_PROXY ?? 0),

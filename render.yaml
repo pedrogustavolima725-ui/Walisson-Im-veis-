@@ -1,0 +1,16 @@
+# Publicação no Render (https://render.com) — plano gratuito
+services:
+  - type: web
+    name: walisson-imoveis
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DEMO_MODE
+        value: "true"
