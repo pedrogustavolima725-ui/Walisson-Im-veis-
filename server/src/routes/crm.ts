@@ -397,7 +397,10 @@ crmRouter.patch('/users/:id', requireRole('admin'), async (req, res) => {
   if (b.role) await run('UPDATE users SET role = ?, updated_at = ? WHERE id = ?', b.role, now(), id);
   if (b.active !== undefined) {
     await run('UPDATE users SET active = ?, updated_at = ? WHERE id = ?', b.active ? 1 : 0, now(), id);
-    if (!b.active) await run('DELETE FROM sessions WHERE user_id = ?', id); // encerra acesso imediatamente
+    if (!b.active) {
+      await run('DELETE FROM sessions WHERE user_id = ?', id); // encerra acesso imediatamente
+      await run('DELETE FROM push_tokens WHERE user_id = ?', id);
+    }
   }
   if (b.unlock) await run('UPDATE users SET locked_until = NULL, failed_logins = 0 WHERE id = ?', id);
   if (b.role && b.role !== target.role) await run('DELETE FROM sessions WHERE user_id = ?', id); // força novo login com novas permissões

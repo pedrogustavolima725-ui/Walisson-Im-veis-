@@ -2,16 +2,19 @@ package br.com.walissonimoveis.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.Manifest;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -24,6 +27,12 @@ import android.widget.FrameLayout;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import com.google.firebase.messaging.FirebaseMessaging;
+
+import org.json.JSONObject;
+
+import java.lang.ref.WeakReference;
+
 /**
  * App Android da Walisson Imóveis: abre o app web publicado (BuildConfig.APP_URL)
  * em tela cheia, com envio de fotos, links externos (WhatsApp, telefone, e-mail),
@@ -31,6 +40,8 @@ import android.widget.Toast;
  */
 public class MainActivity extends Activity {
     private static final int FILE_REQUEST = 41;
+    private static final int NOTIF_REQUEST = 42;
+    private static WeakReference<MainActivity> current = new WeakReference<>(null);
 
     private WebView web;
     private ProgressBar progress;
@@ -142,8 +153,67 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Baixando " + name, Toast.LENGTH_SHORT).show();
         });
 
-        if (savedInstanceState != null) web.restoreState(savedInstanceState);
+        // Ponte com o site: entrega o token do celular para ligar à conta logada
+        web.addJavascriptInterface(new Bridge(), "WalissonApp");
+        current = new WeakReference<>(this);
+
+        String link = getIntent().getStringExtra("link");
+        if (link != null) openLink(link);
+        else if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else loadApp();
+
+        setupPush();
+    }
+
+    /** Pede permissão (Android 13+) e obtém o token do Firebase. Sem Firebase configurado, o app segue sem push. */
+    private void setupPush() {
+        PushService.ensureChannel(this);
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS}, NOTIF_REQUEST);
+        }
+        try {
+            FirebaseMessaging.getInstance().getToken().addOnSuccessListener(token -> {
+                getSharedPreferences(PushService.PREFS, MODE_PRIVATE).edit().putString("token", token).apply();
+                onPushToken(token);
+            });
+        } catch (IllegalStateException e) {
+            // Firebase não configurado neste build
+        }
+    }
+
+    /** Avisa o site (se aberto) que há um token novo. */
+    static void onPushToken(String token) {
+        MainActivity a = current.get();
+        if (a == null || a.web == null) return;
+        a.runOnUiThread(() -> a.web.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('wi-push-token',{detail:" + JSONObject.quote(token) + "}))", null));
+    }
+
+    /** Abre uma página do app (ex.: ao tocar numa notificação). Só caminhos internos. */
+    private void openLink(String link) {
+        if (link == null || !link.startsWith("/") || link.startsWith("//")) link = "/";
+        showingOffline = false;
+        progress.setVisibility(View.VISIBLE);
+        web.loadUrl(BuildConfig.APP_URL + link);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String link = intent.getStringExtra("link");
+        if (link != null) openLink(link);
+    }
+
+    private class Bridge {
+        @JavascriptInterface
+        public String getPushToken() {
+            return getSharedPreferences(PushService.PREFS, MODE_PRIVATE).getString("token", "");
+        }
+
+        @JavascriptInterface
+        public String getVersion() {
+            return BuildConfig.VERSION_NAME;
+        }
     }
 
     private void loadApp() {

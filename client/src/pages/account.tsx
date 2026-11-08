@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BellRing as BellIcon, Mail, Send, Smartphone as PhoneIcon } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   BellRing, CalendarDays, Camera, ChevronRight, Download, FileSignature, KeyRound, LayoutDashboard, Laptop, LogOut, Megaphone, Moon,
@@ -73,6 +74,8 @@ export function Profile() {
             <button onClick={async () => { await logout(); nav('/'); }} className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-danger hover:bg-danger-soft"><LogOut className="size-[18px]" /><span className="text-sm font-medium">Sair da conta</span></button>
           </Card>
         </div>
+        <div className="space-y-5">
+        <NotificationSettings />
         <Card className="h-fit p-5 md:p-6">
           <h3 className="mb-4 font-semibold">Dados pessoais</h3>
           <div className="space-y-4">
@@ -89,8 +92,49 @@ export function Profile() {
             <Button loading={saving} onClick={() => save()}>Salvar alterações</Button>
           </div>
         </Card>
+        </div>
       </div>
     </Page>
+  );
+}
+
+/* ============================ Notificações ============================ */
+function NotificationSettings() {
+  const toast = useToast();
+  const { data, setData, loading } = useApi<{ email: boolean; push: boolean; devices: number; emailAvailable: boolean; pushAvailable: boolean }>('/me/notification-settings');
+  const [sending, setSending] = useState(false);
+  const inApp = !!(window as unknown as { WalissonApp?: unknown }).WalissonApp;
+  const save = async (patch: { email?: boolean; push?: boolean }) => {
+    if (!data) return;
+    const next = { email: patch.email ?? data.email, push: patch.push ?? data.push };
+    setData({ ...data, ...next });
+    try { await api('/me/notification-settings', { method: 'PUT', body: next }); toast('Preferências salvas.'); }
+    catch (e: any) { setData(data); toast(e.message, 'error'); }
+  };
+  const test = async () => {
+    setSending(true);
+    try { await api('/me/notifications/test', { body: {} }); toast('Notificação de teste enviada!'); }
+    catch (e: any) { toast(e.message, 'error'); } finally { setSending(false); }
+  };
+  return (
+    <Card className="p-5 md:p-6">
+      <div className="mb-4 flex items-center gap-3">
+        <span className="grid size-10 place-items-center rounded-2xl bg-accent-soft text-accent"><BellIcon className="size-5" /></span>
+        <div><h3 className="font-semibold">Notificações</h3><p className="text-xs text-muted">Avisos de leads, visitas, mensagens e propostas.</p></div>
+      </div>
+      {loading || !data ? <PageLoader /> : (
+        <div className="space-y-4">
+          <Toggle checked={data.push} onChange={(v) => save({ push: v })}
+            label={<span className="flex items-center gap-2"><PhoneIcon className="size-4 text-muted" />No celular (push)</span>}
+            description={!data.pushAvailable ? 'Ainda não configurado no servidor.' : data.devices ? `${data.devices} celular(es) conectado(s).` : inApp ? 'Abrindo pelo app, este celular é conectado automaticamente.' : 'Instale o app Android para receber no celular.'} />
+          <Toggle checked={data.email} onChange={(v) => save({ email: v })}
+            label={<span className="flex items-center gap-2"><Mail className="size-4 text-muted" />Por e-mail</span>}
+            description={data.emailAvailable ? 'Enviado para o e-mail da sua conta.' : 'Ainda não configurado no servidor.'} />
+          <p className="text-xs text-faint">Os avisos sempre aparecem também no sino dentro do app.</p>
+          <Button variant="secondary" size="sm" loading={sending} onClick={test} icon={<Send className="size-4" />}>Enviar notificação de teste</Button>
+        </div>
+      )}
+    </Card>
   );
 }
 

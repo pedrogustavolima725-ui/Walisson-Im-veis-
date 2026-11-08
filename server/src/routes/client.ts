@@ -6,6 +6,8 @@ import { verifyPassword } from '../lib/crypto.ts';
 import { audit, leadActivity, notify, upsertLeadForClient } from '../lib/events.ts';
 import { badRequest, forbidden, idParam, notFound, parse, zPhone, zReqStr, zStr } from '../lib/http.ts';
 import { withExtras } from './properties.ts';
+import { mailEnabled } from '../lib/mailer.ts';
+import { pushEnabled } from '../lib/push.ts';
 
 /** Rotas da área do cliente (também usadas pelos corretores quando aplicável). */
 export const clientRouter = Router();
@@ -222,6 +224,38 @@ clientRouter.post('/notifications/read', async (req, res) => {
   res.json({ ok: true });
 });
 
+/* ---------------- Notificações push: celulares do usuário ---------------- */
+clientRouter.post('/push-tokens', async (req, res) => {
+  const b = parse(z.object({ token: z.string().trim().min(20).max(4096), platform: z.enum(['android', 'ios', 'web']).default('android') }), req.body);
+  const t = now();
+  // Um token pertence a um único usuário (o último que entrou naquele celular)
+  await run('DELETE FROM push_tokens WHERE token = ?', b.token);
+  await run('INSERT INTO push_tokens (token, user_id, platform, created_at, last_seen_at) VALUES (?,?,?,?,?)', b.token, req.user!.id, b.platform, t, t);
+  res.json({ ok: true });
+});
+clientRouter.post('/push-tokens/remove', async (req, res) => {
+  const b = parse(z.object({ token: z.string().trim().min(20).max(4096) }), req.body);
+  await run('DELETE FROM push_tokens WHERE token = ? AND user_id = ?', b.token, req.user!.id);
+  res.json({ ok: true });
+});
+clientRouter.get('/notification-settings', async (req, res) => {
+  const devices = (await get<{ n: number }>('SELECT COUNT(*) AS n FROM push_tokens WHERE user_id = ?', req.user!.id))!.n;
+  res.json({ email: !!req.user!.notify_email, push: !!req.user!.notify_push, devices, emailAvailable: mailEnabled(), pushAvailable: pushEnabled() });
+});
+clientRouter.put('/notification-settings', async (req, res) => {
+  const b = parse(z.object({ email: z.boolean(), push: z.boolean() }), req.body);
+  await run('UPDATE users SET notify_email = ?, notify_push = ?, updated_at = ? WHERE id = ?', b.email ? 1 : 0, b.push ? 1 : 0, now(), req.user!.id);
+  res.json({ ok: true });
+});
+const testLimiter = new Map<number, number>();
+clientRouter.post('/notifications/test', async (req, res) => {
+  const last = testLimiter.get(req.user!.id) ?? 0;
+  if (Date.now() - last < 30_000) throw badRequest('Aguarde alguns segundos para enviar outro teste.');
+  testLimiter.set(req.user!.id, Date.now());
+  await notify(req.user!.id, { type: 'sistema', title: 'Notificação de teste', body: 'Se você recebeu este aviso, as notificações estão funcionando. 🎉', link: '/notificacoes' });
+  res.json({ ok: true });
+});
+
 /* ---------------- Buscas salvas / alertas ---------------- */
 clientRouter.get('/saved-searches', async (req, res) => {
   res.json((await all<{ filters: string }>('SELECT * FROM saved_searches WHERE user_id = ? ORDER BY id DESC', req.user!.id)).map((s) => ({ ...s, filters: JSON.parse(s.filters) })));
@@ -326,6 +360,7 @@ clientRouter.post('/account/delete', async (req, res) => {
   await tx(async () => {
     await run('DELETE FROM sessions WHERE user_id = ?', uid);
     await run('DELETE FROM favorites WHERE user_id = ?', uid);
+    await run('DELETE FROM push_tokens WHERE user_id = ?', uid);
     await run('DELETE FROM saved_searches WHERE user_id = ?', uid);
     await run('DELETE FROM notifications WHERE user_id = ?', uid);
     await run("UPDATE leads SET name = 'Titular removido (LGPD)', email = NULL, phone = NULL, message = NULL, user_id = NULL WHERE user_id = ?", uid);

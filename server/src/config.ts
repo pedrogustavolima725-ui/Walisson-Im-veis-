@@ -22,6 +22,14 @@ export const config = {
   uploadDir: path.resolve(process.cwd(), 'data/uploads'),
   trustProxy: Number(process.env.TRUST_PROXY ?? 0),
   commissionRate: Number(process.env.COMMISSION_RATE ?? 6),
+  // E-mail (Brevo — plano gratuito: 300 e-mails/dia)
+  mail: {
+    brevoApiKey: process.env.BREVO_API_KEY?.trim() || '',
+    from: process.env.MAIL_FROM?.trim() || process.env.ADMIN_EMAIL?.trim() || '',
+    fromName: process.env.MAIL_FROM_NAME?.trim() || 'Walisson Imóveis',
+  },
+  // Push (Firebase Cloud Messaging) — JSON da conta de serviço, puro ou em base64
+  firebaseServiceAccount: process.env.FIREBASE_SERVICE_ACCOUNT?.trim() || '',
   session: {
     cookieName: isProd ? '__Host-wi_session' : 'wi_session',
     ttlMs: 1000 * 60 * 60 * 12, // 12h (sessão padrão)

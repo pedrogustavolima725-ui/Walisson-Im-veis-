@@ -16,6 +16,8 @@ export interface SessionUser {
   bio: string | null;
   totp_enabled: number;
   marketing_opt_in: number;
+  notify_email: number;
+  notify_push: number;
   created_at: number;
 }
 export interface SessionInfo {
@@ -37,7 +39,7 @@ declare global {
 }
 
 export const USER_PUBLIC_COLS =
-  'u.id, u.name, u.email, u.phone, u.role, u.avatar, u.creci, u.bio, u.totp_enabled, u.marketing_opt_in, u.created_at';
+  'u.id, u.name, u.email, u.phone, u.role, u.avatar, u.creci, u.bio, u.totp_enabled, u.marketing_opt_in, u.notify_email, u.notify_push, u.created_at';
 
 export function clientIp(req: Request) {
   return req.ip ?? req.socket.remoteAddress ?? '';

@@ -10,6 +10,7 @@ import {
 } from '../lib/crypto.ts';
 import { createSession, destroySession, requireAuth, USER_PUBLIC_COLS } from '../lib/auth.ts';
 import { audit, notify } from '../lib/events.ts';
+import { emailLayout, sendMail } from '../lib/mailer.ts';
 import { badRequest, parse, unauthorized, zEmail, zPhone, zReqStr, HttpError } from '../lib/http.ts';
 
 export const authRouter = Router();
@@ -167,8 +168,17 @@ authRouter.post('/forgot', resetLimiter, async (req, res) => {
     await run('UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL', now(), user.id);
     await run('INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?,?,?)', user.id, sha256(token), now() + config.passwordResetTtlMs);
     const url = `${config.appUrl}/redefinir-senha?token=${token}`;
-    // Integração de e-mail: substitua este log pelo seu provedor (SES, SendGrid, Resend...)
-    console.log(`[e-mail] Redefinição de senha para ${email}: ${url}`);
+    void sendMail(
+      { email, name: user.name },
+      'Redefinição de senha — Walisson Imóveis',
+      emailLayout({
+        title: 'Redefinir sua senha',
+        body: `Olá, ${user.name.split(' ')[0]}! Recebemos um pedido para redefinir a senha da sua conta. O link vale por 30 minutos.\nSe não foi você, ignore este e-mail — sua senha continua a mesma.`,
+        button: { label: 'Criar nova senha', url },
+        footer: 'Por segurança, nunca compartilhe este link. A Walisson Imóveis nunca pede sua senha por e-mail ou telefone.',
+      }),
+      `Redefinir sua senha: ${url} (válido por 30 minutos). Se não foi você, ignore este e-mail.`,
+    ).catch(() => {});
     if (!config.isProd || config.demo) devResetUrl = url;
     await audit(req, 'auth.password_reset_requested', {}, user.id);
   }

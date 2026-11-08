@@ -1,6 +1,9 @@
 import type { Request } from 'express';
 import { all, get, run, now } from '../db.ts';
 import { clientIp } from './auth.ts';
+import { config } from '../config.ts';
+import { emailLayout, sendMail } from './mailer.ts';
+import { sendPush } from './push.ts';
 
 export async function audit(req: Request | null, action: string, meta: Record<string, unknown> = {}, userId?: number | null) {
   await run(
@@ -14,12 +17,32 @@ export async function audit(req: Request | null, action: string, meta: Record<st
   );
 }
 
-export async function notify(userId: number | null | undefined, n: { type: string; title: string; body?: string; link?: string }) {
+type Notice = { type: string; title: string; body?: string; link?: string };
+
+export async function notify(userId: number | null | undefined, n: Notice) {
   if (!userId) return;
   await run(
     'INSERT INTO notifications (user_id, type, title, body, link, created_at) VALUES (?,?,?,?,?,?)',
     userId, n.type, n.title, n.body ?? null, n.link ?? null, now(),
   );
+  // Push e e-mail em segundo plano: não atrasam a resposta e falhas não quebram a ação do usuário
+  void deliver(userId, n).catch((e) => console.error('[notificação]', (e as Error).message));
+}
+
+/** Canais externos (push no celular e e-mail), conforme as preferências do usuário. */
+export async function deliver(userId: number, n: Notice) {
+  const u = await get<{ email: string; name: string; active: number; notify_email: number; notify_push: number }>(
+    'SELECT email, name, active, notify_email, notify_push FROM users WHERE id = ?', userId,
+  );
+  if (!u || !u.active || u.email.endsWith('@anon.invalid')) return;
+  const tasks: Promise<unknown>[] = [];
+  if (u.notify_push) tasks.push(sendPush(userId, n));
+  if (u.notify_email) {
+    const url = `${config.appUrl}${n.link ?? '/'}`;
+    const html = emailLayout({ title: n.title, body: n.body, button: { label: 'Abrir no app', url } });
+    tasks.push(sendMail({ email: u.email, name: u.name }, n.title, html, `${n.title}\n\n${n.body ?? ''}\n\n${url}`));
+  }
+  await Promise.allSettled(tasks);
 }
 
 export async function notifyStaff(n: { type: string; title: string; body?: string; link?: string }) {

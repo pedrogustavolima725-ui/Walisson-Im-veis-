@@ -242,6 +242,16 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at);
 
+-- Celulares que recebem notificações push (Firebase Cloud Messaging)
+CREATE TABLE IF NOT EXISTS push_tokens (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  platform TEXT NOT NULL DEFAULT 'android',
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_tokens_user ON push_tokens(user_id);
+
 -- Fotos enviadas (guardadas no banco para sobreviver a reinícios do servidor)
 CREATE TABLE IF NOT EXISTS files (
   name TEXT PRIMARY KEY,
@@ -256,6 +266,13 @@ CREATE TABLE IF NOT EXISTS files (
 export const ready = (async () => {
   if (!isRemoteDb) await client.executeMultiple('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   await client.executeMultiple(SCHEMA);
+  // Migrações de colunas novas em bancos já existentes (ignora se a coluna já existe)
+  for (const sql of [
+    'ALTER TABLE users ADD COLUMN notify_email INTEGER NOT NULL DEFAULT 1',
+    'ALTER TABLE users ADD COLUMN notify_push INTEGER NOT NULL DEFAULT 1',
+  ]) {
+    try { await client.execute(sql); } catch (e) { if (!/duplicate column/i.test(String((e as Error).message))) throw e; }
+  }
 })();
 
 // Dentro de tx(), as consultas usam a transação ativa (sem precisar passá-la adiante)

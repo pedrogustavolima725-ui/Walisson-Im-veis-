@@ -13,6 +13,8 @@ export interface User {
   bio: string | null;
   totp_enabled: number;
   marketing_opt_in: number;
+  notify_email: number;
+  notify_push: number;
   created_at: number;
 }
 
@@ -55,7 +57,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(() => setUser(null));
   }, [refresh]);
 
+  // App Android: liga o celular (token do Firebase) à conta logada para receber push
+  useEffect(() => {
+    const bridge = (window as unknown as { WalissonApp?: { getPushToken(): string } }).WalissonApp;
+    if (!user || !bridge) return;
+    const register = (token: string | null | undefined) => {
+      if (token && token.length > 20) api('/me/push-tokens', { body: { token, platform: 'android' } }).catch(() => {});
+    };
+    try { register(bridge.getPushToken()); } catch { /* app antigo sem push */ }
+    const onToken = (e: Event) => register((e as CustomEvent<string>).detail);
+    window.addEventListener('wi-push-token', onToken);
+    return () => window.removeEventListener('wi-push-token', onToken);
+  }, [user]);
+
   const logout = useCallback(async () => {
+    try {
+      const token = (window as unknown as { WalissonApp?: { getPushToken(): string } }).WalissonApp?.getPushToken();
+      if (token) await api('/me/push-tokens/remove', { body: { token } });
+    } catch { /* ignora */ }
     try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignora */ }
     setSession(null, null);
     refresh();
