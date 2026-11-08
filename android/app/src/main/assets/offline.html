@@ -17,6 +17,9 @@
   a.btn { display: inline-flex; align-items: center; justify-content: center; height: 52px; padding: 0 28px; border-radius: 999px;
           background: var(--accent); color: var(--ink); font-weight: 600; text-decoration: none; font-size: 15px; }
   small { display: block; margin-top: 18px; color: var(--muted); font-size: 12px; }
+  .spin { width: 28px; height: 28px; border: 3px solid rgba(216,187,146,.25); border-top-color: var(--accent); border-radius: 50%; margin: 0 auto 20px; animation: r 0.9s linear infinite; }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .waking .offline-only, .offline .waking-only { display: none; }
 </style>
 </head>
 <body>
@@ -28,14 +31,24 @@
         <path d="m24 33 3.5 10L32 34l4.5 9L40 33" fill="none" stroke="#f4eee6" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </div>
-    <h1>Não foi possível conectar</h1>
-    <p>Verifique sua internet. Se estiver conectado, o servidor pode estar iniciando — isso leva cerca de 1 minuto.</p>
-    <a class="btn" href="?action=retry">Tentar novamente</a>
-    <small id="auto">Nova tentativa automática em <span id="s">20</span>s</small>
+    <div class="waking-only">
+      <div class="spin" role="status" aria-label="Carregando"></div>
+      <h1>Iniciando o servidor…</h1>
+      <p>O app estava em repouso e está acordando. Isso leva até 1 minuto — já já abre sozinho.</p>
+    </div>
+    <div class="offline-only">
+      <h1>Sem conexão</h1>
+      <p>Verifique se o celular está conectado à internet (Wi-Fi ou dados móveis).</p>
+      <a class="btn" href="?action=retry">Tentar novamente</a>
+    </div>
+    <small id="auto">Nova tentativa em <span id="s">10</span>s</small>
   </div>
   <script>
-    var n = 20, el = document.getElementById('s');
-    setInterval(function () { n--; if (n <= 0) { location.href = '?action=retry'; n = 20; } el.textContent = n; }, 1000);
+    var waking = /mode=waking/.test(location.search);
+    document.body.className = waking ? 'waking' : 'offline';
+    var every = waking ? 5 : 10, n = every, el = document.getElementById('s');
+    el.textContent = n;
+    setInterval(function () { n--; if (n <= 0) { location.href = '?action=retry'; n = every; } el.textContent = n; }, 1000);
   </script>
 </body>
 </html>

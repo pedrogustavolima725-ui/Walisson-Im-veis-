@@ -97,7 +97,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
-                if (request.isForMainFrame()) showOffline();
+                if (request.isForMainFrame()) showOffline(false);
             }
 
             // Servidor fora do ar, reiniciando ou ainda não publicado (404 na raiz, 5xx)
@@ -106,7 +106,8 @@ public class MainActivity extends Activity {
                 if (!request.isForMainFrame()) return;
                 int code = response.getStatusCode();
                 String path = request.getUrl().getPath();
-                if (code >= 500 || (code == 404 && (path == null || path.isEmpty() || path.equals("/")))) showOffline();
+                // 5xx: o servidor gratuito está acordando (leva até ~1 min) — tela "Iniciando..."
+                if (code >= 500 || (code == 404 && (path == null || path.isEmpty() || path.equals("/")))) showOffline(code >= 500);
             }
         });
 
@@ -223,10 +224,10 @@ public class MainActivity extends Activity {
     }
 
     /** Tela própria quando não há conexão ou o servidor gratuito ainda está iniciando. */
-    private void showOffline() {
+    private void showOffline(boolean waking) {
         showingOffline = true;
         progress.setVisibility(View.GONE);
-        web.loadUrl("file:///android_asset/offline.html");
+        web.loadUrl("file:///android_asset/offline.html" + (waking ? "?mode=waking" : ""));
     }
 
     /** Links do próprio app abrem aqui; WhatsApp, telefone, e-mail e outros sites abrem no app certo. */
