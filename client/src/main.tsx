@@ -21,6 +21,7 @@ const crmProps = () => import('./pages/crm/properties');
 const crmOps = () => import('./pages/crm/operations');
 const crmAdmin = () => import('./pages/crm/admin');
 const messages = () => import('./pages/messages');
+const legal = () => import('./pages/legal');
 
 const guard = (el: React.ReactNode) => <RequireAuth>{el}</RequireAuth>;
 
@@ -83,7 +84,9 @@ const router = (DEMO ? createMemoryRouter : createBrowserRouter)([
           { path: '/perfil', element: guard(lz(account, 'Profile')) },
           { path: '/perfil/seguranca', element: guard(lz(account, 'Security')) },
           { path: '/perfil/privacidade', element: guard(lz(account, 'Privacy')) },
-          { path: '/termos', element: lz(account, 'Terms') },
+          { path: '/termos', element: lz(legal, 'Terms') },
+          { path: '/privacidade', element: lz(legal, 'PrivacyPolicy') },
+          { path: '/politica-de-privacidade', element: <Navigate to="/privacidade" replace /> },
           { path: '*', element: lz(client, 'NotFound') },
         ],
       },

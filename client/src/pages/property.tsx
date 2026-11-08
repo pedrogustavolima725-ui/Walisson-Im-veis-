@@ -403,7 +403,7 @@ function InterestForm({ open, onClose, property }: { open: boolean; onClose: () 
           </>
         )}
         <Field label="Mensagem" error={fields.message}><Textarea value={f.message} onChange={(e) => setF({ ...f, message: e.target.value })} maxLength={1000} /></Field>
-        <p className="text-xs text-faint">Ao enviar, você concorda em ser contatado sobre este imóvel conforme nossa <Link to="/termos" className="underline">Política de Privacidade</Link>.</p>
+        <p className="text-xs text-faint">Ao enviar, você concorda em ser contatado sobre este imóvel conforme nossa <Link to="/privacidade" className="underline">Política de Privacidade</Link>.</p>
         <Button className="w-full" loading={loading} onClick={send}>Enviar</Button>
       </div>
     </Modal>

@@ -349,7 +349,7 @@ export function Privacy() {
               <li key={t} className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />{t}</li>
             ))}
           </ul>
-          <Link to="/termos" className="mt-4 inline-block text-sm font-semibold text-accent">Ler Termos de Uso e Política de Privacidade</Link>
+          <Link to="/privacidade" className="mt-4 inline-block text-sm font-semibold text-accent">Ler a Política de Privacidade completa</Link>
         </Card>
       </div>
       <Modal open={open} onClose={() => setOpen(false)} title="Excluir conta permanentemente">
@@ -360,24 +360,6 @@ export function Privacy() {
           <Button variant="danger" className="w-full" loading={loading} disabled={confirmText !== 'EXCLUIR' || !pw} onClick={del}>Excluir minha conta</Button>
         </div>
       </Modal>
-    </Page>
-  );
-}
-
-/* ============================ Termos ============================ */
-export function Terms() {
-  return (
-    <Page>
-      <PageHeader title="Termos de Uso e Política de Privacidade" back />
-      <Card className="space-y-5 p-6 text-sm leading-relaxed text-muted md:p-8">
-        <section><h2 className="mb-2 text-base font-semibold text-text">1. Sobre o serviço</h2><p>A Walisson Imóveis oferece este aplicativo para divulgação de imóveis, agendamento de visitas, comunicação com corretores e envio de propostas. As informações dos anúncios são fornecidas pelos proprietários e conferidas por nossa equipe.</p></section>
-        <section><h2 className="mb-2 text-base font-semibold text-text">2. Dados coletados</h2><p>Coletamos nome, e-mail, telefone, preferências de busca, interações (favoritos, visitas, propostas e mensagens) e dados técnicos de acesso (IP, navegador) para segurança.</p></section>
-        <section><h2 className="mb-2 text-base font-semibold text-text">3. Finalidade e base legal</h2><p>Os dados são usados para executar o atendimento imobiliário solicitado (execução de contrato e procedimentos preliminares), cumprir obrigações legais, prevenir fraudes (legítimo interesse) e, mediante consentimento, enviar comunicações de marketing.</p></section>
-        <section><h2 className="mb-2 text-base font-semibold text-text">4. Compartilhamento</h2><p>Compartilhamos dados apenas com o corretor responsável, o proprietário do imóvel (quando necessário à negociação) e instituições financeiras mediante sua solicitação. Não vendemos dados pessoais.</p></section>
-        <section><h2 className="mb-2 text-base font-semibold text-text">5. Seus direitos</h2><p>Você pode acessar, corrigir, exportar e excluir seus dados, além de revogar consentimentos, diretamente em “Minha conta → Privacidade e dados” ou pelo e-mail do encarregado (DPO): privacidade@walissonimoveis.com.br.</p></section>
-        <section><h2 className="mb-2 text-base font-semibold text-text">6. Segurança</h2><p>Adotamos criptografia de senhas (scrypt), sessões seguras com cookies HttpOnly, proteção contra CSRF, limitação de tentativas de login, verificação em duas etapas opcional e trilha de auditoria de acessos.</p></section>
-        <p className="text-xs text-faint">Documento modelo — revise com sua assessoria jurídica antes da publicação.</p>
-      </Card>
     </Page>
   );
 }

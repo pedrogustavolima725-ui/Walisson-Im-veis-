@@ -271,7 +271,7 @@ export function Register() {
         <Field label="Confirmar senha" error={fields.confirm}><PasswordInput autoComplete="new-password" value={f.confirm} onChange={set('confirm')} placeholder="Repita a senha" invalid={!!fields.confirm} /></Field>
         <label className="flex items-start gap-3 text-sm text-muted">
           <input type="checkbox" checked={f.acceptTerms} onChange={set('acceptTerms')} className="mt-0.5 size-4 shrink-0 accent-[var(--accent)]" />
-          <span>Li e aceito os <Link to="/termos" target={DEMO ? undefined : '_blank'} className="text-accent underline-offset-2 hover:underline">Termos de Uso e a Política de Privacidade</Link>.</span>
+          <span>Li e aceito os <Link to="/termos" target={DEMO ? undefined : '_blank'} className="text-accent underline-offset-2 hover:underline">Termos de Uso</Link> e a <Link to="/privacidade" target={DEMO ? undefined : '_blank'} className="text-accent underline-offset-2 hover:underline">Política de Privacidade</Link>.</span>
         </label>
         {fields.acceptTerms && <p className="-mt-2 text-xs text-danger">{fields.acceptTerms}</p>}
         <label className="flex items-start gap-3 text-sm text-muted">

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { ArrowRight, Building, Building2, Calculator, Home as HomeIcon, KeyRound, Megaphone, Palmtree, Search, SlidersHorizontal, Sparkles, Store, Trees, UsersRound, Warehouse } from 'lucide-react';
 import { useApi } from '../lib/hooks';
+import { COMPANY } from '../lib/company';
 import { useAuth } from '../context/app';
 import { Avatar, Chip, cx, Img, SectionTitle, Skeleton } from '../components/ui';
 import { Logo, NotificationBell, Page, ThemeToggle } from '../components/layout';
@@ -216,8 +217,8 @@ export function Home() {
 
       <footer className="mt-14 flex flex-col items-center gap-2 border-t border-line pt-8 text-center text-xs text-faint">
         <Logo />
-        <p className="mt-2">© {new Date().getFullYear()} Walisson Imóveis · CRECI J-00000 · Todos os direitos reservados</p>
-        <p><Link to="/termos" className="hover:text-text">Termos de uso e privacidade (LGPD)</Link></p>
+        <p className="mt-2">© {new Date().getFullYear()} {COMPANY.name}{COMPANY.creci ? ` · ${COMPANY.creci}` : ''}{COMPANY.cnpj ? ` · CNPJ ${COMPANY.cnpj}` : ''} · Todos os direitos reservados</p>
+        <p className="flex gap-3"><Link to="/privacidade" className="hover:text-text">Política de Privacidade</Link><span aria-hidden>·</span><Link to="/termos" className="hover:text-text">Termos de Uso</Link></p>
       </footer>
     </Page>
   );
