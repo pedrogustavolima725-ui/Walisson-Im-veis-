@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Walisson Imóveis</title>
+<style>
+  :root { --bg:#0f0d0b; --surface:#1a1714; --text:#f4eee6; --muted:#a69c90; --accent:#d8bb92; --ink:#1a140e; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; }
+  .card { max-width: 340px; }
+  .logo { width: 72px; height: 72px; border-radius: 22px; background: var(--surface); display: grid; place-items: center; margin: 0 auto 24px; border: 1px solid rgba(255,240,220,.12); }
+  h1 { font-size: 22px; margin: 0 0 8px; font-weight: 600; }
+  p { color: var(--muted); line-height: 1.5; margin: 0 0 24px; font-size: 15px; }
+  a.btn { display: inline-flex; align-items: center; justify-content: center; height: 52px; padding: 0 28px; border-radius: 999px;
+          background: var(--accent); color: var(--ink); font-weight: 600; text-decoration: none; font-size: 15px; }
+  small { display: block; margin-top: 18px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <svg viewBox="0 0 64 64" width="40" height="40" aria-hidden="true">
+        <path d="M14 30 32 15l18 15" fill="none" stroke="#c9a77c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M19 27v20h26V27" fill="none" stroke="#c9a77c" stroke-width="4" stroke-linejoin="round"/>
+        <path d="m24 33 3.5 10L32 34l4.5 9L40 33" fill="none" stroke="#f4eee6" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1>Não foi possível conectar</h1>
+    <p>Verifique sua internet. Se estiver conectado, o servidor pode estar iniciando — isso leva cerca de 1 minuto.</p>
+    <a class="btn" href="?action=retry">Tentar novamente</a>
+    <small id="auto">Nova tentativa automática em <span id="s">20</span>s</small>
+  </div>
+  <script>
+    var n = 20, el = document.getElementById('s');
+    setInterval(function () { n--; if (n <= 0) { location.href = '?action=retry'; n = 20; } el.textContent = n; }, 1000);
+  </script>
+</body>
+</html>

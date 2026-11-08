@@ -120,6 +120,19 @@ data/                   banco SQLite e fotos enviadas (fora do git)
 
 No plano gratuito o servidor "dorme" após 15 min sem acesso; o primeiro acesso seguinte leva ~1 min. Os dados ficam no Turso e não são afetados. Para outro provedor, basta Node 22 + as mesmas variáveis; sempre via **HTTPS**.
 
+## App Android (APK)
+
+A pasta `android/` contém o app Android: abre o app publicado em tela cheia, com envio de fotos, links de WhatsApp/telefone, botão voltar e tela própria para "sem conexão".
+
+```bash
+cd android
+echo "sdk.dir=/caminho/do/android-sdk" > local.properties
+./gradlew assembleRelease -PappUrl=https://seu-app.onrender.com
+# APK: android/app/build/outputs/apk/release/app-release.apk
+```
+
+A assinatura usa `android/keystore.properties` + o arquivo `.keystore` (fora do git). **Guarde a chave**: atualizações do app precisam ser assinadas com ela.
+
 Pontos de integração deixados prontos:
 - **E-mail** (recuperação de senha): em `server/src/routes/auth.ts`, rota `/forgot`, troque o `console.log` pelo seu provedor (SES, SendGrid, Resend…). Em desenvolvimento o link aparece na própria tela.
 - **Fotos**: reduzidas no aparelho (máx. 1600 px) e guardadas no banco; o seed de demonstração usa imagens do Unsplash por URL.
