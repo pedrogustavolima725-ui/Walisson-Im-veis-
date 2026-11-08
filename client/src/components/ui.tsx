@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Eye, EyeOff, Home, Loader2, Minus, Plus, X } from 'lucide-react';
 import { initials } from '../lib/format';
@@ -87,6 +88,28 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     </div>
   );
 });
+
+/**
+ * Campo de valor em reais: aceita só dígitos e mostra o milhar formatado (500.000).
+ * `value`/`onChange` trabalham com a string de dígitos ("500000"), sem centavos.
+ */
+export function MoneyInput({ value, onChange, invalid, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & { value: string; onChange: (digits: string) => void; invalid?: boolean }) {
+  const shown = value ? Number(value).toLocaleString('pt-BR') : '';
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[15px] text-faint">R$</span>
+      <Input
+        {...rest}
+        inputMode="numeric"
+        autoComplete="off"
+        value={shown}
+        invalid={invalid}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 12))}
+        className="pl-11 tabular-nums"
+      />
+    </div>
+  );
+}
 
 export function PasswordInput(props: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean; icon?: ReactNode }) {
   const [show, setShow] = useState(false);
@@ -304,7 +327,8 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  // Portal no <body>: a janela fica acima de menus fixos (barra inferior, etc.)
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={onClose} />
       <div className={cx('animate-fade-up relative max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] border border-line bg-bg-elev p-5 shadow-soft sm:rounded-[28px] sm:p-6 safe-bottom', wide ? 'sm:max-w-3xl' : 'sm:max-w-lg')}>
@@ -315,7 +339,8 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -42,8 +42,7 @@ function Toc({ items }: { items: [string, string][] }) {
 function Identity() {
   const lines = [
     COMPANY.legalName ? `${COMPANY.legalName} (nome fantasia ${COMPANY.name})` : COMPANY.name,
-    COMPANY.cnpj && `CNPJ ${COMPANY.cnpj}`,
-    COMPANY.creci,
+    COMPANY.document && `${COMPANY.document.length > 14 ? 'CNPJ' : 'CPF'} ${COMPANY.document}`,
     COMPANY.address,
   ].filter(Boolean);
   return <>{lines.join(' · ')}</>;

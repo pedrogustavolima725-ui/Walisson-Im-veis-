@@ -5,8 +5,7 @@
 export const COMPANY = {
   name: 'Walisson Imóveis',
   legalName: '', // razão social, se houver (ex.: "Walisson Morais Negócios Imobiliários LTDA")
-  cnpj: '', // ex.: "00.000.000/0001-00"
-  creci: '', // ex.: "CRECI-GO 12345-J"
+  document: '', // CPF ou CNPJ da imobiliária, com pontuação (ex.: "00.000.000/0001-00")
   address: '', // ex.: "Rua X, 100 — Centro, Goiânia/GO"
   email: 'walissonmoraisc2s@gmail.com', // contato e encarregado de dados (LGPD)
   dpoName: '', // nome do encarregado pelo tratamento de dados pessoais (LGPD art. 41)

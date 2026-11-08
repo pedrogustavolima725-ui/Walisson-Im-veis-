@@ -154,6 +154,14 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Baixando " + name, Toast.LENGTH_SHORT).show();
         });
 
+        // Sem o menu de navegador ao segurar o dedo em links/fotos (a "barrinha" com a URL);
+        // em campos de texto continua funcionando (para colar, selecionar etc.)
+        web.setOnLongClickListener(v -> {
+            WebView.HitTestResult hit = web.getHitTestResult();
+            return hit == null || hit.getType() != WebView.HitTestResult.EDIT_TEXT_TYPE;
+        });
+        web.setLongClickable(true);
+
         // Ponte com o site: entrega o token do celular para ligar à conta logada
         web.addJavascriptInterface(new Bridge(), "WalissonApp");
         current = new WeakReference<>(this);

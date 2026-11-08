@@ -10,7 +10,7 @@ import { Avatar, cx, Empty, Img, PageLoader } from '../components/ui';
 type Conv = { id: number; property_title: string | null; last_message_at: number; other_name: string; other_avatar: string | null; other_role: string; last_message: string | null; unread: number };
 type Msg = { id: number; sender_id: number; body: string; read_at: number | null; created_at: number };
 type Thread = {
-  conversation: { id: number; client_id: number; agent_id: number; property_id: number | null; property_title: string | null; price: number | null; purpose: string | null; cover: string | null; agent_name: string; agent_phone: string | null; agent_avatar: string | null; creci: string | null; client_name: string; client_phone: string | null };
+  conversation: { id: number; client_id: number; agent_id: number; property_id: number | null; property_title: string | null; price: number | null; purpose: string | null; cover: string | null; agent_name: string; agent_phone: string | null; agent_avatar: string | null; client_name: string; client_phone: string | null };
   messages: Msg[];
 };
 
@@ -108,7 +108,7 @@ function ThreadView({ id, base, onActivity }: { id: number; base: string; onActi
   if (!thread) return <PageLoader />;
   const c = thread.conversation;
   const iAmClient = user?.id === c.client_id;
-  const other = iAmClient ? { name: c.agent_name, avatar: c.agent_avatar, phone: c.agent_phone, sub: c.creci ?? 'Corretor(a)' } : { name: c.client_name, avatar: null, phone: c.client_phone, sub: 'Cliente' };
+  const other = iAmClient ? { name: c.agent_name, avatar: c.agent_avatar, phone: c.agent_phone, sub: 'Corretor(a)' } : { name: c.client_name, avatar: null, phone: c.client_phone, sub: 'Cliente' };
 
   const send = async (e: FormEvent) => {
     e.preventDefault();

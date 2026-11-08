@@ -217,7 +217,7 @@ export function Home() {
 
       <footer className="mt-14 flex flex-col items-center gap-2 border-t border-line pt-8 text-center text-xs text-faint">
         <Logo />
-        <p className="mt-2">© {new Date().getFullYear()} {COMPANY.name}{COMPANY.creci ? ` · ${COMPANY.creci}` : ''}{COMPANY.cnpj ? ` · CNPJ ${COMPANY.cnpj}` : ''} · Todos os direitos reservados</p>
+        <p className="mt-2">© {new Date().getFullYear()} {COMPANY.name}{COMPANY.document ? ` · ${COMPANY.document.length > 14 ? 'CNPJ' : 'CPF'} ${COMPANY.document}` : ''} · Todos os direitos reservados</p>
         <p className="flex gap-3"><Link to="/privacidade" className="hover:text-text">Política de Privacidade</Link><span aria-hidden>·</span><Link to="/termos" className="hover:text-text">Termos de Uso</Link></p>
       </footer>
     </Page>

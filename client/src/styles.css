@@ -232,3 +232,15 @@ input[type='datetime-local']::-webkit-calendar-picker-indicator {
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* Dentro do app Android: comportamento de app (sem menu de link/foto ao segurar) */
+html.in-app a,
+html.in-app img,
+html.in-app button {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+html.in-app img {
+  -webkit-user-drag: none;
+}

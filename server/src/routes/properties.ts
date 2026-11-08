@@ -125,7 +125,7 @@ propertiesRouter.get('/:id', async (req, res) => {
   if (!staff) await run('UPDATE properties SET views = views + 1 WHERE id = ?', id);
   const images = await all<{ id: number; url: string }>('SELECT id, url FROM property_images WHERE property_id = ? ORDER BY position, id', id);
   const agent = p.agent_id
-    ? await get('SELECT id, name, email, phone, avatar, creci, bio FROM users WHERE id = ? AND active = 1', p.agent_id)
+    ? await get('SELECT id, name, email, phone, avatar, bio FROM users WHERE id = ? AND active = 1', p.agent_id)
     : null;
   const similar = await withExtras(
     await all<{ id: number }>(

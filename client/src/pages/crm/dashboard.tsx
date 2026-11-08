@@ -66,7 +66,7 @@ export function Dashboard() {
       )}
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 [&>*]:min-w-0">
         <Card className="p-4 md:p-5">
           <div className="flex items-center justify-between"><span className="text-[13px] text-muted">Leads no mês</span><span className="grid size-9 place-items-center rounded-xl bg-accent-soft text-accent"><Users className="size-[18px]" /></span></div>
           <div className="mt-3 flex items-end justify-between">
@@ -97,7 +97,7 @@ export function Dashboard() {
       </div>
 
       {/* Desempenho + Funil */}
-      <div className="grid gap-5 xl:grid-cols-[1.7fr_1fr]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.7fr_1fr] [&>*]:min-w-0">
         <Card className="p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -118,7 +118,7 @@ export function Dashboard() {
         </Card>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3 [&>*]:min-w-0">
         {/* Próximas visitas */}
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between"><h2 className="font-semibold">Próximas visitas</h2><Link to="/crm/agenda" className="text-xs font-medium text-muted hover:text-accent">Agenda</Link></div>

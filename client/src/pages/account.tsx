@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { api, uploadImages } from '../lib/api';
 import { useApi } from '../lib/hooks';
-import { dateShort, deviceName, maskPhone, relative, ROLE_LABEL } from '../lib/format';
+import { dateShort, deviceName, maskDocument, maskPhone, relative, ROLE_LABEL } from '../lib/format';
 import { useAuth, useTheme, useToast } from '../context/app';
 import { Avatar, Badge, Button, Card, cx, Field, Input, Modal, PageHeader, PageLoader, PasswordInput, Textarea, Toggle } from '../components/ui';
 import { Page } from '../components/layout';
@@ -19,7 +19,7 @@ export function Profile() {
   const { theme, set } = useTheme();
   const toast = useToast();
   const nav = useNavigate();
-  const [f, setF] = useState({ name: user!.name, phone: user!.phone ?? '', bio: user!.bio ?? '', creci: user!.creci ?? '', marketing: !!user!.marketing_opt_in });
+  const [f, setF] = useState({ name: user!.name, phone: user!.phone ?? '', bio: user!.bio ?? '', document: maskDocument(user!.document ?? ''), marketing: !!user!.marketing_opt_in });
   const [saving, setSaving] = useState(false);
   const [fields, setFields] = useState<Record<string, string>>({});
 
@@ -84,7 +84,7 @@ export function Profile() {
             <Field label="Celular / WhatsApp" error={fields.phone}><Input type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: maskPhone(e.target.value) })} autoComplete="tel" /></Field>
             {isStaff && (
               <>
-                <Field label="CRECI"><Input value={f.creci} onChange={(e) => setF({ ...f, creci: e.target.value })} /></Field>
+                <Field label="CPF ou CNPJ" error={fields.document} hint="Visível só para a equipe da imobiliária."><Input inputMode="numeric" value={f.document} onChange={(e) => setF({ ...f, document: maskDocument(e.target.value) })} placeholder="000.000.000-00" /></Field>
                 <Field label="Apresentação (exibida aos clientes)"><Textarea value={f.bio} onChange={(e) => setF({ ...f, bio: e.target.value })} maxLength={500} /></Field>
               </>
             )}

@@ -21,8 +21,8 @@ android {
         applicationId 'br.com.walissonimoveis.app'
         minSdk 24
         targetSdk 35
-        versionCode 3
-        versionName '1.1.1'
+        versionCode 4
+        versionName '1.1.2'
         buildConfigField 'String', 'APP_URL', "\"${appUrl}\""
         resValue 'string', 'app_host', new URI(appUrl).host
     }

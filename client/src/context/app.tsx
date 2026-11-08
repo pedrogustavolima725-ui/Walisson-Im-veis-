@@ -9,7 +9,7 @@ export interface User {
   phone: string | null;
   role: Role;
   avatar: string | null;
-  creci: string | null;
+  document: string | null;
   bio: string | null;
   totp_enabled: number;
   marketing_opt_in: number;

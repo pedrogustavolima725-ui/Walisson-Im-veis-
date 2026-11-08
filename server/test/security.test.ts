@@ -227,3 +227,26 @@ test('LGPD: exportação e exclusão de conta', async () => {
   assert.equal((await c.req('/me/account/delete', { body: { password: 'SenhaForte123', confirm: 'EXCLUIR' } })).status, 200);
   assert.equal((await new Client().login('lgpd@x.com', 'SenhaForte123')).status, 401);
 });
+
+test('CPF/CNPJ: validado e nunca exposto ao público', async () => {
+  const admin = new Client();
+  await admin.login('admin@walissonimoveis.com.br');
+  const bad = await admin.req('/crm/users', { body: { name: 'Doc Ruim', email: 'docruim@x.com', role: 'corretor', document: '123.456.789-00', password: 'SenhaForte2026' } });
+  assert.equal(bad.status, 400);
+  assert.match(bad.body.fields.document, /inválido/);
+  const ok = await admin.req('/crm/users', { body: { name: 'Doc Bom', email: 'docbom@x.com', role: 'corretor', document: '111.444.777-35', password: 'SenhaForte2026' } });
+  assert.equal(ok.status, 201);
+  const cnpj = await admin.req('/me/profile', { method: 'PUT', body: { name: 'Walisson Oliveira', document: '11.222.333/0001-81' } });
+  assert.equal(cnpj.status, 200);
+  assert.equal(cnpj.body.user.document, '11222333000181', 'guarda só os dígitos');
+  // Público: lista de corretores e página do imóvel não trazem documento
+  const anon = new Client();
+  const agents = await anon.req('/agents');
+  assert.ok(agents.body.length > 0);
+  assert.ok(agents.body.every((a: any) => !('document' in a) && !('creci' in a)));
+  const prop = await anon.req('/properties/2');
+  assert.ok(prop.body.agent && !('document' in prop.body.agent));
+  // Equipe (admin) vê o documento
+  const team = await admin.req('/crm/users');
+  assert.equal(team.body.find((u: any) => u.email === 'docbom@x.com').document, '11144477735');
+});

@@ -5,7 +5,7 @@ import { api, DEMO, qs, uploadImages } from '../../lib/api';
 import { useApi, useDebounced } from '../../lib/hooks';
 import { brl, priceSuffix, PURPOSE_LABEL, STATUS_LABEL, TYPE_LABEL } from '../../lib/format';
 import { useAuth, useToast } from '../../context/app';
-import { Badge, Button, Card, Chip, cx, Empty, ErrorBox, Field, Img, Input, PageHeader, PageLoader, Select, statusTone, Textarea, Toggle } from '../../components/ui';
+import { Badge, Button, Card, Chip, cx, Empty, ErrorBox, Field, Img, Input, MoneyInput, PageHeader, PageLoader, Select, statusTone, Textarea, Toggle } from '../../components/ui';
 
 type Row = {
   id: number; code: string; title: string; purpose: string; type: string; status: string; price: number; neighborhood: string; city: string; state: string;
@@ -104,8 +104,8 @@ export function PropertyForm() {
     if (!d) return;
     const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
     setF({
-      title: d.title, description: d.description, purpose: d.purpose, type: d.type, status: d.status, price: s(d.price), condo_fee: s(d.condo_fee), iptu: s(d.iptu),
-      bedrooms: s(d.bedrooms), suites: s(d.suites), bathrooms: s(d.bathrooms), parking: s(d.parking), area: s(d.area), land_area: s(d.land_area), address: d.address,
+      title: d.title, description: d.description, purpose: d.purpose, type: d.type, status: d.status, price: String(Math.round(d.price ?? 0) || ''), condo_fee: String(Math.round(d.condo_fee ?? 0) || ''), iptu: String(Math.round(d.iptu ?? 0) || ''),
+      bedrooms: s(d.bedrooms), suites: s(d.suites), bathrooms: s(d.bathrooms), parking: s(d.parking), area: String(Math.round(d.area ?? 0) || ''), land_area: String(Math.round(d.land_area ?? 0) || ''), address: d.address,
       neighborhood: d.neighborhood, city: d.city, state: d.state, zip: d.zip, lat: s(d.lat), lng: s(d.lng), featured: d.featured, accepts_financing: d.accepts_financing,
       accepts_pets: d.accepts_pets, furnished: d.furnished, agent_id: d.agent_id ?? '',
     });
@@ -126,7 +126,23 @@ export function PropertyForm() {
   const moveImg = (i: number, d: -1 | 1) => setImages((cur) => { const n = [...cur]; const j = i + d; if (j < 0 || j >= n.length) return cur; [n[i], n[j]] = [n[j], n[i]]; return n; });
   const addFeature = (v: string) => { const t = v.trim(); if (t && !features.includes(t)) setFeatures([...features, t]); setFeat(''); };
 
+  const LABELS: Record<string, string> = {
+    title: 'Título', description: 'Descrição', price: 'Valor', condo_fee: 'Condomínio', iptu: 'IPTU', city: 'Cidade', state: 'UF', zip: 'CEP',
+    neighborhood: 'Bairro', address: 'Endereço', lat: 'Latitude', lng: 'Longitude', area: 'Área', land_area: 'Terreno', images: 'Fotos', features: 'Diferenciais',
+  };
+  const showErrors = (errs: Record<string, string>) => {
+    setFields(errs);
+    const first = Object.keys(errs)[0];
+    if (first) setTimeout(() => document.querySelector(`[data-field="${first.split('.')[0]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  };
   const save = async () => {
+    if (uploading) return toast('Aguarde o envio das fotos terminar.', 'info');
+    // Conferência rápida antes de enviar
+    const local: Record<string, string> = {};
+    if (!f.title.trim()) local.title = 'Informe o título';
+    if (!Number(f.price)) local.price = 'Informe o valor';
+    if (!f.city.trim()) local.city = 'Informe a cidade';
+    if (Object.keys(local).length) { showErrors(local); toast('Preencha os campos destacados.', 'error'); return; }
     setSaving(true); setFields({});
     const num = (v: string) => (v === '' ? 0 : Number(v));
     const body = {
@@ -135,9 +151,14 @@ export function PropertyForm() {
       agent_id: f.agent_id ? Number(f.agent_id) : null, features, images,
     };
     try {
-      if (isNew) { const r = await api<{ id: number }>('/properties', { body }); toast('Imóvel cadastrado!'); nav(`/crm/imoveis/${r.id}`, { replace: true }); }
+      if (isNew) { const r = await api<{ id: number }>('/properties', { body }); toast(f.status === 'disponivel' ? 'Imóvel publicado na vitrine!' : 'Imóvel cadastrado!'); nav(`/crm/imoveis/${r.id}`, { replace: true }); }
       else { await api(`/properties/${id}`, { method: 'PUT', body }); toast(f.status === 'disponivel' && existing.data?.status === 'pendente' ? 'Imóvel aprovado e publicado!' : 'Alterações salvas.'); existing.reload(true); }
-    } catch (e: any) { setFields(e.fields ?? {}); toast(e.message, 'error'); } finally { setSaving(false); }
+    } catch (e: any) {
+      const errs: Record<string, string> = e.fields ?? {};
+      showErrors(errs);
+      const firstKey = Object.keys(errs)[0];
+      toast(firstKey ? `${LABELS[firstKey.split('.')[0]] ?? firstKey}: ${errs[firstKey]}` : e.message, 'error');
+    } finally { setSaving(false); }
   };
   const remove = async () => {
     if (!confirm('Excluir este imóvel permanentemente? Leads e visitas vinculados perderão a referência.')) return;
@@ -157,20 +178,20 @@ export function PropertyForm() {
         <div className="space-y-5">
           <Card className="space-y-4 p-5 md:p-6">
             <h3 className="font-semibold">Informações principais</h3>
-            <Field label="Título *" error={fields.title}><Input value={f.title} onChange={set('title')} maxLength={140} /></Field>
+            <Field label="Título *" error={fields.title}><Input data-field="title" invalid={!!fields.title} value={f.title} onChange={set('title')} maxLength={140} /></Field>
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Finalidade"><Select value={f.purpose} onChange={set('purpose')}>{Object.entries(PURPOSE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
               <Field label="Tipo"><Select value={f.type} onChange={set('type')}>{Object.entries(TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
               <Field label="Status"><Select value={f.status} onChange={set('status')}>{Object.entries(STATUS_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
             </div>
-            <Field label="Descrição"><Textarea value={f.description} onChange={set('description')} maxLength={5000} className="min-h-36" /></Field>
+            <Field label="Descrição" error={fields.description}><Textarea data-field="description" value={f.description} onChange={set('description')} maxLength={5000} className="min-h-36" /></Field>
           </Card>
           <Card className="space-y-4 p-5 md:p-6">
             <h3 className="font-semibold">Valores</h3>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label={`${f.purpose === 'venda' ? 'Preço de venda' : f.purpose === 'aluguel' ? 'Aluguel mensal' : 'Diária'} (R$) *`} error={fields.price}><Input type="number" min={0} value={f.price} onChange={set('price')} /></Field>
-              <Field label="Condomínio (R$)"><Input type="number" min={0} value={f.condo_fee} onChange={set('condo_fee')} /></Field>
-              <Field label="IPTU mensal (R$)"><Input type="number" min={0} value={f.iptu} onChange={set('iptu')} /></Field>
+              <Field label={`${f.purpose === 'venda' ? 'Preço de venda' : f.purpose === 'aluguel' ? 'Aluguel mensal' : 'Diária'} *`} error={fields.price}><div data-field="price"><MoneyInput value={f.price} onChange={(v) => setF({ ...f, price: v })} invalid={!!fields.price} placeholder="0" /></div></Field>
+              <Field label="Condomínio" error={fields.condo_fee}><MoneyInput value={f.condo_fee} onChange={(v) => setF({ ...f, condo_fee: v })} placeholder="0" /></Field>
+              <Field label="IPTU mensal" error={fields.iptu}><MoneyInput value={f.iptu} onChange={(v) => setF({ ...f, iptu: v })} placeholder="0" /></Field>
             </div>
           </Card>
           <Card className="space-y-4 p-5 md:p-6">
@@ -180,8 +201,8 @@ export function PropertyForm() {
               <Field label="Suítes"><Input type="number" min={0} value={f.suites} onChange={set('suites')} /></Field>
               <Field label="Banheiros"><Input type="number" min={0} value={f.bathrooms} onChange={set('bathrooms')} /></Field>
               <Field label="Vagas"><Input type="number" min={0} value={f.parking} onChange={set('parking')} /></Field>
-              <Field label="Área útil (m²)"><Input type="number" min={0} value={f.area} onChange={set('area')} /></Field>
-              <Field label="Terreno (m²)"><Input type="number" min={0} value={f.land_area} onChange={set('land_area')} /></Field>
+              <Field label="Área útil (m²)"><Input inputMode="numeric" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value.replace(/\D/g, '').slice(0, 7) })} placeholder="0" /></Field>
+              <Field label="Terreno (m²)"><Input inputMode="numeric" value={f.land_area} onChange={(e) => setF({ ...f, land_area: e.target.value.replace(/\D/g, '').slice(0, 7) })} placeholder="0" /></Field>
             </div>
             <div>
               <p className="mb-2 text-[13px] font-medium text-muted">Diferenciais</p>
@@ -203,9 +224,9 @@ export function PropertyForm() {
             <Field label="Endereço (privado — só a equipe vê)"><Input value={f.address} onChange={set('address')} /></Field>
             <div className="grid gap-4 sm:grid-cols-[1fr_1fr_80px_120px]">
               <Field label="Bairro"><Input value={f.neighborhood} onChange={set('neighborhood')} /></Field>
-              <Field label="Cidade *" error={fields.city}><Input value={f.city} onChange={set('city')} /></Field>
-              <Field label="UF"><Input value={f.state} onChange={set('state')} maxLength={2} className="uppercase" /></Field>
-              <Field label="CEP"><Input value={f.zip} onChange={set('zip')} maxLength={10} /></Field>
+              <Field label="Cidade *" error={fields.city}><Input data-field="city" invalid={!!fields.city} value={f.city} onChange={set('city')} /></Field>
+              <Field label="UF" error={fields.state}><Input data-field="state" value={f.state} onChange={set('state')} maxLength={2} className="uppercase" /></Field>
+              <Field label="CEP" error={fields.zip}><Input data-field="zip" value={f.zip} onChange={set('zip')} maxLength={10} /></Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Latitude" hint="Ex.: -23.5613"><Input type="number" step="any" value={f.lat} onChange={set('lat')} /></Field>
@@ -217,7 +238,7 @@ export function PropertyForm() {
         <div className="space-y-5">
           <Card className="p-5">
             <h3 className="mb-1 font-semibold">Fotos</h3>
-            <p className="mb-3 text-xs text-muted">A primeira foto é a capa. JPG, PNG ou WEBP até 8 MB.</p>
+            <p className="mb-3 text-xs text-muted">A primeira foto aparece como destaque. JPG, PNG ou WEBP; fotos grandes são reduzidas automaticamente.</p>
             <div className="grid grid-cols-2 gap-2">
               {images.map((u, i) => (
                 <div key={u + i} className="group relative aspect-[4/3] overflow-hidden rounded-2xl">
@@ -244,7 +265,7 @@ export function PropertyForm() {
             </Card>
           )}
           <div className="sticky top-4 space-y-2">
-            <Button size="lg" className="w-full" loading={saving} onClick={save}>{isNew ? 'Cadastrar imóvel' : 'Salvar alterações'}</Button>
+            <Button size="lg" className="w-full" loading={saving || uploading} disabled={uploading} onClick={save}>{uploading ? 'Enviando fotos…' : isNew ? 'Cadastrar imóvel' : 'Salvar alterações'}</Button>
             {!isNew && user!.role === 'admin' && <Button variant="danger" className="w-full" onClick={remove} icon={<Trash2 className="size-4" />}>Excluir imóvel</Button>}
           </div>
         </div>

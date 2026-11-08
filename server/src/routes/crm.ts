@@ -5,7 +5,7 @@ import { all, get, run, now, tx } from '../db.ts';
 import { requireRole, type SessionUser } from '../lib/auth.ts';
 import { hashPassword, passwordProblems } from '../lib/crypto.ts';
 import { audit, leadActivity, notify } from '../lib/events.ts';
-import { badRequest, forbidden, idParam, notFound, parse, zBool, zEmail, zPhone, zReqStr, zStr } from '../lib/http.ts';
+import { badRequest, forbidden, idParam, notFound, parse, zDocument, zBool, zEmail, zPhone, zReqStr, zStr } from '../lib/http.ts';
 
 export const crmRouter = Router();
 crmRouter.use(requireRole('corretor', 'admin'));
@@ -365,7 +365,7 @@ crmRouter.get('/users', requireRole('admin'), async (req, res) => {
   if (f.q) { where.push('(u.name LIKE ? OR u.email LIKE ?)'); params.push(`%${f.q}%`, `%${f.q}%`); }
   res.json(
     await all(
-      `SELECT u.id, u.name, u.email, u.phone, u.role, u.creci, u.avatar, u.active, u.totp_enabled, u.last_login_at, u.created_at, u.locked_until,
+      `SELECT u.id, u.name, u.email, u.phone, u.role, u.document, u.avatar, u.active, u.totp_enabled, u.last_login_at, u.created_at, u.locked_until,
         (SELECT COUNT(*) FROM leads l WHERE l.agent_id = u.id AND l.stage NOT IN ('ganho','perdido')) AS open_leads,
         (SELECT COUNT(*) FROM properties p WHERE p.agent_id = u.id AND p.status = 'disponivel') AS listings
        FROM users u WHERE ${where.join(' AND ')} AND u.email NOT LIKE '%@anon.invalid' ORDER BY CASE u.role WHEN 'admin' THEN 0 WHEN 'corretor' THEN 1 ELSE 2 END, u.name`,
@@ -375,14 +375,14 @@ crmRouter.get('/users', requireRole('admin'), async (req, res) => {
 });
 
 crmRouter.post('/users', requireRole('admin'), async (req, res) => {
-  const b = parse(z.object({ name: zReqStr(100), email: zEmail, phone: zPhone.optional().or(z.literal('')), role: z.enum(['corretor', 'admin']), creci: zStr(30).optional(), password: z.string().max(128) }), req.body);
+  const b = parse(z.object({ name: zReqStr(100), email: zEmail, phone: zPhone.optional().or(z.literal('')), role: z.enum(['corretor', 'admin']), document: zDocument.optional(), password: z.string().max(128) }), req.body);
   const issues = passwordProblems(b.password, b);
   if (issues.length) throw badRequest('Senha fraca.', { password: `A senha precisa de: ${issues.join(', ')}` });
   if (await get('SELECT 1 FROM users WHERE email = ?', b.email)) throw badRequest('E-mail já cadastrado.', { email: 'E-mail já cadastrado' });
   const t = now();
   const { id } = await run(
-    'INSERT INTO users (name, email, phone, password_hash, role, creci, terms_accepted_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
-    b.name, b.email, b.phone || null, await hashPassword(b.password), b.role, b.creci ?? null, t, t, t,
+    'INSERT INTO users (name, email, phone, password_hash, role, document, terms_accepted_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    b.name, b.email, b.phone || null, await hashPassword(b.password), b.role, b.document || null, t, t, t,
   );
   await audit(req, 'user.create', { id, role: b.role });
   res.status(201).json({ id });

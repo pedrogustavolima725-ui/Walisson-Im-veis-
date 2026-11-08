@@ -4,7 +4,7 @@ import { all, get, run, now, tx } from '../db.ts';
 import { isStaff, requireAuth, USER_PUBLIC_COLS } from '../lib/auth.ts';
 import { verifyPassword } from '../lib/crypto.ts';
 import { audit, leadActivity, notify, upsertLeadForClient } from '../lib/events.ts';
-import { badRequest, forbidden, idParam, notFound, parse, zPhone, zReqStr, zStr } from '../lib/http.ts';
+import { badRequest, forbidden, idParam, notFound, parse, zDocument, zPhone, zReqStr, zStr } from '../lib/http.ts';
 import { withExtras } from './properties.ts';
 import { mailEnabled } from '../lib/mailer.ts';
 import { pushEnabled } from '../lib/push.ts';
@@ -188,7 +188,7 @@ clientRouter.get('/conversations/:id', async (req, res) => {
   const meta = await get(
     `SELECT c.id, c.client_id, c.agent_id, c.property_id, p.title AS property_title, p.price, p.purpose,
        (SELECT url FROM property_images WHERE property_id = p.id ORDER BY position LIMIT 1) AS cover,
-       a.name AS agent_name, a.phone AS agent_phone, a.avatar AS agent_avatar, a.creci, cl.name AS client_name, cl.phone AS client_phone
+       a.name AS agent_name, a.phone AS agent_phone, a.avatar AS agent_avatar, cl.name AS client_name, cl.phone AS client_phone
      FROM conversations c JOIN users a ON a.id = c.agent_id JOIN users cl ON cl.id = c.client_id LEFT JOIN properties p ON p.id = c.property_id WHERE c.id = ?`,
     c.id,
   );
@@ -316,15 +316,15 @@ clientRouter.put('/profile', async (req, res) => {
       name: zReqStr(100, 'Informe seu nome'),
       phone: zPhone.optional().or(z.literal('')),
       bio: zStr(500).optional(),
-      creci: zStr(30).optional(),
+      document: zDocument.optional(),
       avatar: z.string().regex(/^\/uploads\/[\w.-]+$/).nullable().optional(),
       marketing: z.boolean().optional(),
     }),
     req.body,
   );
   await run(
-    'UPDATE users SET name = ?, phone = ?, bio = COALESCE(?, bio), creci = COALESCE(?, creci), avatar = COALESCE(?, avatar), marketing_opt_in = COALESCE(?, marketing_opt_in), updated_at = ? WHERE id = ?',
-    b.name, b.phone || null, b.bio ?? null, isStaff(req.user) ? (b.creci ?? null) : null, b.avatar ?? null, b.marketing === undefined ? null : b.marketing ? 1 : 0, now(), req.user!.id,
+    'UPDATE users SET name = ?, phone = ?, bio = COALESCE(?, bio), document = COALESCE(?, document), avatar = COALESCE(?, avatar), marketing_opt_in = COALESCE(?, marketing_opt_in), updated_at = ? WHERE id = ?',
+    b.name, b.phone || null, b.bio ?? null, isStaff(req.user) ? (b.document ?? null) : null, b.avatar ?? null, b.marketing === undefined ? null : b.marketing ? 1 : 0, now(), req.user!.id,
   );
   await audit(req, 'account.profile_updated');
   res.json({ user: await get(`SELECT ${USER_PUBLIC_COLS} FROM users u WHERE u.id = ?`, req.user!.id) });
@@ -379,7 +379,7 @@ export const agentsRouter = Router();
 agentsRouter.get('/', async (_req, res) => {
   res.json(
     await all(
-      `SELECT u.id, u.name, u.avatar, u.creci, u.bio, u.phone,
+      `SELECT u.id, u.name, u.avatar, u.bio, u.phone,
         (SELECT COUNT(*) FROM properties p WHERE p.agent_id = u.id AND p.status = 'disponivel') AS listings,
         (SELECT ROUND(AVG(rating),1) FROM visits v WHERE v.agent_id = u.id AND rating IS NOT NULL) AS rating
        FROM users u WHERE u.role IN ('corretor') AND u.active = 1 ORDER BY listings DESC`,

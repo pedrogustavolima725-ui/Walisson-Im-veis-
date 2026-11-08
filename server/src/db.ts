@@ -270,6 +270,7 @@ export const ready = (async () => {
   for (const sql of [
     'ALTER TABLE users ADD COLUMN notify_email INTEGER NOT NULL DEFAULT 1',
     'ALTER TABLE users ADD COLUMN notify_push INTEGER NOT NULL DEFAULT 1',
+    'ALTER TABLE users ADD COLUMN document TEXT', // CPF ou CNPJ (só dígitos), visível apenas para a equipe
   ]) {
     try { await client.execute(sql); } catch (e) { if (!/duplicate column/i.test(String((e as Error).message))) throw e; }
   }

@@ -12,7 +12,7 @@ export interface SessionUser {
   phone: string | null;
   role: Role;
   avatar: string | null;
-  creci: string | null;
+  document: string | null;
   bio: string | null;
   totp_enabled: number;
   marketing_opt_in: number;
@@ -39,7 +39,7 @@ declare global {
 }
 
 export const USER_PUBLIC_COLS =
-  'u.id, u.name, u.email, u.phone, u.role, u.avatar, u.creci, u.bio, u.totp_enabled, u.marketing_opt_in, u.notify_email, u.notify_push, u.created_at';
+  'u.id, u.name, u.email, u.phone, u.role, u.avatar, u.document, u.bio, u.totp_enabled, u.marketing_opt_in, u.notify_email, u.notify_push, u.created_at';
 
 export function clientIp(req: Request) {
   return req.ip ?? req.socket.remoteAddress ?? '';

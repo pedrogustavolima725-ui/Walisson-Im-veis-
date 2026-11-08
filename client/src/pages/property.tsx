@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Bath, BedDouble, CalendarCheck, Car, Check, ChevronLeft, ChevronRight, Eye, FileSignature, GitCompareArrows, MapPin, Maximize2,
@@ -8,6 +9,7 @@ import { api } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { brl, maskPhone, PAYMENT_LABEL, priceSuffix, PURPOSE_LABEL, STATUS_LABEL, time, TYPE_LABEL, weekday, whatsappLink } from '../lib/format';
 import { useAuth, useCompare, useToast } from '../context/app';
+import { COMPANY } from '../lib/company';
 import { Avatar, BackButton, Badge, Button, Card, cx, ErrorBox, Field, IconButton, Img, Input, Modal, PageLoader, Select, SectionTitle, statusTone, Textarea } from '../components/ui';
 import { Page } from '../components/layout';
 import { FavButton, MapView, PropertyCard, simulate, type PropertySummary } from '../components/property';
@@ -23,7 +25,7 @@ interface Detail extends PropertySummary {
   accepts_financing: number;
   accepts_pets: number;
   furnished: number;
-  agent: { id: number; name: string; email: string; phone: string | null; avatar: string | null; creci: string | null; bio: string | null } | null;
+  agent: { id: number; name: string; email: string; phone: string | null; avatar: string | null; bio: string | null } | null;
   similar: PropertySummary[];
 }
 
@@ -201,7 +203,7 @@ export function PropertyPage() {
                   <Avatar name={p.agent.name} src={p.agent.avatar} size={52} />
                   <div className="min-w-0">
                     <p className="font-semibold">{p.agent.name}</p>
-                    <p className="text-xs text-muted">{p.agent.creci}</p>
+                    <p className="text-xs text-muted">Corretor(a) {COMPANY.name}</p>
                   </div>
                 </div>
                 {p.agent.bio && <p className="mt-3 text-sm text-muted">{p.agent.bio}</p>}
@@ -239,7 +241,7 @@ export function PropertyPage() {
         </div>
       )}
 
-      {lightbox && (
+      {lightbox && createPortal(
         <div className="fixed inset-0 z-[90] flex flex-col bg-black" role="dialog" aria-modal="true" aria-label="Galeria de fotos">
           <div className="flex items-center justify-between p-4 text-white">
             <span className="text-sm">{idx + 1} / {images.length}</span>
@@ -257,7 +259,8 @@ export function PropertyPage() {
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <ScheduleVisit open={modal === 'visit'} onClose={() => setModal(null)} property={p} />

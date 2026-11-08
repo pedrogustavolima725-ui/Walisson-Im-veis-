@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { KeyRound, Lock, LockOpen, MonitorSmartphone, Plus, ShieldAlert, ShieldCheck, UserCheck, UserX, Users } from 'lucide-react';
 import { api, qs } from '../../lib/api';
 import { useApi } from '../../lib/hooks';
-import { dateTime, deviceName, maskPhone, relative, ROLE_LABEL } from '../../lib/format';
+import { dateTime, deviceName, maskDocument, maskPhone, relative, ROLE_LABEL } from '../../lib/format';
 import { useAuth, useToast } from '../../context/app';
 import { Avatar, Badge, Button, Card, Chip, cx, Field, Input, Modal, PageHeader, PageLoader, PasswordInput, Select, Stat } from '../../components/ui';
 import { PasswordMeter } from '../auth';
 
 /* ============================ Equipe ============================ */
-type U = { id: number; name: string; email: string; phone: string | null; role: string; creci: string | null; avatar: string | null; active: number; totp_enabled: number; last_login_at: number | null; created_at: number; locked_until: number | null; open_leads: number; listings: number };
+type U = { id: number; name: string; email: string; phone: string | null; role: string; document: string | null; avatar: string | null; active: number; totp_enabled: number; last_login_at: number | null; created_at: number; locked_until: number | null; open_leads: number; listings: number };
 
 export function Team() {
   const { user } = useAuth();
@@ -17,7 +17,7 @@ export function Team() {
   const [inactive, setInactive] = useState(false);
   const { data, loading, reload } = useApi<U[]>(`/crm/users${qs({ role, inactive: inactive ? '1' : '' })}`);
   const [open, setOpen] = useState(false);
-  const [f, setF] = useState({ name: '', email: '', phone: '', role: 'corretor', creci: '', password: '' });
+  const [f, setF] = useState({ name: '', email: '', phone: '', role: 'corretor', document: '', password: '' });
   const [fields, setFields] = useState<Record<string, string>>({});
 
   if (user?.role !== 'admin') return <p className="text-muted">Acesso restrito a administradores.</p>;
@@ -27,7 +27,7 @@ export function Team() {
   };
   const create = async () => {
     setFields({});
-    try { await api('/crm/users', { body: f }); toast('Usuário criado. Oriente-o a ativar o 2FA no primeiro acesso.'); setOpen(false); setF({ name: '', email: '', phone: '', role: 'corretor', creci: '', password: '' }); reload(); } catch (e: any) { setFields(e.fields ?? {}); toast(e.message, 'error'); }
+    try { await api('/crm/users', { body: f }); toast('Usuário criado. Oriente-o a ativar o 2FA no primeiro acesso.'); setOpen(false); setF({ name: '', email: '', phone: '', role: 'corretor', document: '', password: '' }); reload(); } catch (e: any) { setFields(e.fields ?? {}); toast(e.message, 'error'); }
   };
 
   return (
@@ -54,7 +54,7 @@ export function Team() {
                   {u.totp_enabled ? <Badge tone="success"><ShieldCheck className="size-3" />2FA</Badge> : <Badge tone="warning"><ShieldAlert className="size-3" />Sem 2FA</Badge>}
                   {!u.active && <Badge tone="danger">Inativo</Badge>}
                   {locked && <Badge tone="danger"><Lock className="size-3" />Bloqueado</Badge>}
-                  {u.creci && <Badge>{u.creci}</Badge>}
+                  {u.document && <Badge>{u.document.length === 11 ? 'CPF' : 'CNPJ'} {maskDocument(u.document)}</Badge>}
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
                   <div className="rounded-xl bg-surface-2 p-2"><p className="text-base font-semibold">{u.open_leads}</p><p className="text-muted">leads</p></div>
@@ -82,7 +82,7 @@ export function Team() {
           <Field label="E-mail" error={fields.email}><Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Telefone"><Input value={f.phone} onChange={(e) => setF({ ...f, phone: maskPhone(e.target.value) })} /></Field>
-            <Field label="CRECI"><Input value={f.creci} onChange={(e) => setF({ ...f, creci: e.target.value })} /></Field>
+            <Field label="CPF ou CNPJ" error={fields.document}><Input inputMode="numeric" value={f.document} onChange={(e) => setF({ ...f, document: maskDocument(e.target.value) })} /></Field>
           </div>
           <Field label="Papel"><Select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}><option value="corretor">Corretor</option><option value="admin">Administrador</option></Select></Field>
           <Field label="Senha provisória" error={fields.password}><PasswordInput value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" /><PasswordMeter value={f.password} /></Field>

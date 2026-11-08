@@ -10,7 +10,7 @@ import {
   brl, dateShort, PAYMENT_LABEL, priceSuffix, PROPOSAL_LABEL, PURPOSE_LABEL, relative, STATUS_LABEL, time, TYPE_LABEL, VISIT_LABEL, weekday, whatsappLink,
 } from '../lib/format';
 import { useAuth, useCompare, useCounts, useToast } from '../context/app';
-import { Avatar, Badge, Button, Card, cx, Empty, ErrorBox, Field, Img, Input, Modal, PageHeader, PageLoader, Select, Skeleton, statusTone, Tabs, Textarea, Toggle } from '../components/ui';
+import { Avatar, Badge, Button, Card, cx, Empty, ErrorBox, Field, Img, Input, Modal, MoneyInput, PageHeader, PageLoader, Select, Skeleton, statusTone, Tabs, Textarea, Toggle } from '../components/ui';
 import { Page } from '../components/layout';
 import { PropertyCard, PropertyRow, simulate, type PropertySummary } from '../components/property';
 import { Range } from './property';
@@ -345,7 +345,7 @@ export function Simulator() {
 }
 
 /* ============================ Corretores ============================ */
-type Agent = { id: number; name: string; avatar: string | null; creci: string | null; bio: string | null; phone: string | null; listings: number; rating: number | null };
+type Agent = { id: number; name: string; avatar: string | null; bio: string | null; phone: string | null; listings: number; rating: number | null };
 export function Agents() {
   const { data, loading } = useApi<Agent[]>('/agents');
   const { user } = useAuth();
@@ -369,7 +369,7 @@ export function Agents() {
             <Card key={a.id} className="flex flex-col items-center p-6 text-center">
               <Avatar name={a.name} src={a.avatar} size={80} />
               <h3 className="mt-3 text-lg font-semibold">{a.name}</h3>
-              <p className="text-xs text-muted">{a.creci}</p>
+              <p className="text-xs text-muted">Corretor(a)</p>
               <div className="mt-2 flex items-center gap-3 text-sm">
                 {a.rating && <span className="flex items-center gap-1"><Star className="size-4 fill-warning text-warning" />{a.rating.toFixed(1)}</span>}
                 <span className="text-muted">{a.listings} imóveis</span>
@@ -423,13 +423,13 @@ export function Announce() {
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Finalidade"><Select value={f.purpose} onChange={set('purpose')}>{Object.entries(PURPOSE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
               <Field label="Tipo"><Select value={f.type} onChange={set('type')}>{Object.entries(TYPE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
-              <Field label="Valor pretendido (R$)" error={fields.price}><Input type="number" min={1} value={f.price} onChange={set('price')} /></Field>
+              <Field label="Valor pretendido" error={fields.price}><MoneyInput value={f.price} onChange={(v) => setF({ ...f, price: v })} invalid={!!fields.price} placeholder="0" /></Field>
             </div>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <Field label="Quartos"><Input type="number" min={0} value={f.bedrooms} onChange={set('bedrooms')} /></Field>
               <Field label="Banheiros"><Input type="number" min={0} value={f.bathrooms} onChange={set('bathrooms')} /></Field>
               <Field label="Vagas"><Input type="number" min={0} value={f.parking} onChange={set('parking')} /></Field>
-              <Field label="Área (m²)"><Input type="number" min={0} value={f.area} onChange={set('area')} /></Field>
+              <Field label="Área (m²)"><Input inputMode="numeric" value={f.area} onChange={(e) => setF({ ...f, area: e.target.value.replace(/\D/g, '').slice(0, 7) })} /></Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-[1fr_1fr_90px]">
               <Field label="Bairro"><Input value={f.neighborhood} onChange={set('neighborhood')} /></Field>
@@ -453,7 +453,7 @@ export function Announce() {
                 </label>
               </div>
             </div>
-            <Button type="submit" size="lg" className="w-full" loading={loading}>Enviar para avaliação</Button>
+            <Button type="submit" size="lg" className="w-full" loading={loading || uploading} disabled={uploading}>{uploading ? 'Enviando fotos…' : 'Enviar para avaliação'}</Button>
           </form>
         </Card>
         <div className="space-y-4">

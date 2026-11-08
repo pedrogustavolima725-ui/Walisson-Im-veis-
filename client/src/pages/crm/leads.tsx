@@ -276,8 +276,8 @@ export function LeadDetail() {
         })}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-        <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[360px_1fr]">
+        <div className="min-w-0 space-y-4">
           <Card className="p-5">
             <div className="flex items-center gap-3"><Avatar name={l.name} size={52} /><div className="min-w-0"><p className="font-semibold">{l.name}</p><p className="text-xs text-muted">{l.user_id ? 'Cliente cadastrado no app' : 'Contato externo'}</p></div></div>
             <div className="mt-4 grid grid-cols-3 gap-2">
@@ -322,8 +322,8 @@ export function LeadDetail() {
           )}
         </div>
 
-        <div className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-2">
+        <div className="min-w-0 space-y-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 [&>*]:min-w-0">
             {/* Tarefas */}
             <Card className="p-5">
               <h3 className="mb-3 font-semibold">Tarefas</h3>

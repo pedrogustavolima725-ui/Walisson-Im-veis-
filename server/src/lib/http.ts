@@ -58,3 +58,32 @@ export const zPhone = z
   .max(20)
   .regex(/^[\d\s()+-]{8,20}$/, 'Telefone inválido');
 export const zBool = z.union([z.boolean(), z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')]).transform((v) => v === true || v === 'true' || v === '1');
+
+/* CPF / CNPJ: aceita com ou sem pontuação, valida os dígitos verificadores e guarda só os números */
+export function validCpfCnpj(v: string) {
+  const d = v.replace(/\D/g, '');
+  if (/^(\d)\1+$/.test(d)) return false;
+  const calc = (base: string, weights: number[]) => {
+    const s = weights.reduce((acc, w, i) => acc + Number(base[i]) * w, 0) % 11;
+    return s < 2 ? 0 : 11 - s;
+  };
+  if (d.length === 11) {
+    const w1 = [10, 9, 8, 7, 6, 5, 4, 3, 2];
+    const d1 = calc(d, w1);
+    const d2 = calc(d, [11, ...w1]);
+    return d1 === Number(d[9]) && d2 === Number(d[10]);
+  }
+  if (d.length === 14) {
+    const w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const d1 = calc(d, w1);
+    const d2 = calc(d, [6, ...w1]);
+    return d1 === Number(d[12]) && d2 === Number(d[13]);
+  }
+  return false;
+}
+export const zDocument = z
+  .string()
+  .trim()
+  .max(20)
+  .refine((v) => v === '' || validCpfCnpj(v), 'CPF ou CNPJ inválido')
+  .transform((v) => v.replace(/\D/g, ''));
