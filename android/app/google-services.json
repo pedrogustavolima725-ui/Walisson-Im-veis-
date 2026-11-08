@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "805758641810",
+    "project_id": "walisson-imoveis",
+    "storage_bucket": "walisson-imoveis.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:805758641810:android:c16e0743fd7739399fa84b",
+        "android_client_info": {
+          "package_name": "br.com.walissonimoveis.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtCLqzzgekF8ytPw_ynRxImtpHSpqnmuc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
