@@ -250,3 +250,42 @@ test('CPF/CNPJ: validado e nunca exposto ao público', async () => {
   const team = await admin.req('/crm/users');
   assert.equal(team.body.find((u: any) => u.email === 'docbom@x.com').document, '11144477735');
 });
+
+test('imóvel enviado por cliente: aprovar e reprovar', async () => {
+  const dono = new Client();
+  await dono.req('/auth/register', { body: { name: 'Dono do Imovel', email: 'dono.imovel@x.com', password: 'SenhaForte2026', acceptTerms: true } });
+  const enviar = (title: string) => dono.req('/properties/submit', { body: { title, purpose: 'venda', type: 'casa', price: 350000, city: 'Brasília', state: 'DF', bedrooms: 2, bathrooms: 1, parking: 1, area: 80 } });
+  const a = await enviar('Casa enviada para aprovar');
+  const r = await enviar('Casa enviada para reprovar');
+  assert.equal(a.status, 201);
+  assert.equal((await new Client().req(`/properties/${a.body.id}`)).status, 404, 'em análise não aparece ao público');
+
+  const admin = new Client();
+  await admin.login('admin@walissonimoveis.com.br');
+  const ficha = await admin.req(`/properties/manage/${a.body.id}`);
+  assert.equal(ficha.body.owner.email, 'dono.imovel@x.com', 'mostra quem enviou');
+  assert.equal(ficha.body.status, 'pendente');
+
+  // corretor que não é o responsável não pode avaliar
+  const rafael = new Client();
+  await rafael.login('rafael@walissonimoveis.com.br');
+  if (ficha.body.agent_id !== 3) assert.equal((await rafael.req(`/properties/${a.body.id}/review`, { body: { decision: 'aprovar' } })).status, 403);
+
+  assert.equal((await admin.req(`/properties/${a.body.id}/review`, { body: { decision: 'aprovar' } })).status, 200);
+  assert.equal((await new Client().req(`/properties/${a.body.id}`)).body.status, 'disponivel', 'publicado na vitrine');
+  assert.equal((await admin.req(`/properties/${a.body.id}/review`, { body: { decision: 'aprovar' } })).status, 400, 'não avalia duas vezes');
+
+  assert.equal((await admin.req(`/properties/${r.body.id}/review`, { body: { decision: 'reprovar' } })).status, 400, 'reprovar exige motivo');
+  assert.equal((await admin.req(`/properties/${r.body.id}/review`, { body: { decision: 'reprovar', reason: 'Fotos insuficientes' } })).status, 200);
+
+  const meus = await dono.req('/properties/mine/submissions');
+  const rep = meus.body.find((p: any) => p.id === r.body.id);
+  assert.equal(rep.status, 'inativo');
+  assert.equal(rep.review_note, 'Fotos insuficientes');
+  const avisos = await dono.req('/me/notifications');
+  const titulos = avisos.body.items.map((n: any) => n.title);
+  assert.ok(titulos.includes('Seu imóvel foi aprovado e publicado!'));
+  assert.ok(titulos.includes('Seu imóvel não foi aprovado'));
+  // reprovado pode ser aprovado depois, se o admin mudar de ideia
+  assert.equal((await admin.req(`/properties/${r.body.id}/review`, { body: { decision: 'aprovar' } })).status, 200);
+});

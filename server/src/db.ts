@@ -271,6 +271,8 @@ export const ready = (async () => {
     'ALTER TABLE users ADD COLUMN notify_email INTEGER NOT NULL DEFAULT 1',
     'ALTER TABLE users ADD COLUMN notify_push INTEGER NOT NULL DEFAULT 1',
     'ALTER TABLE users ADD COLUMN document TEXT', // CPF ou CNPJ (só dígitos), visível apenas para a equipe
+    'ALTER TABLE properties ADD COLUMN review_note TEXT', // motivo da reprovação de imóvel enviado por proprietário
+    'ALTER TABLE properties ADD COLUMN reviewed_at INTEGER',
   ]) {
     try { await client.execute(sql); } catch (e) { if (!/duplicate column/i.test(String((e as Error).message))) throw e; }
   }

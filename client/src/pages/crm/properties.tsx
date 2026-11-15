@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Building2, Eye, Heart, ImagePlus, Loader2, Plus, Search, Star, Trash2, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Building2, CheckCircle2, Eye, Heart, ImagePlus, Loader2, MessageCircle, Plus, Search, Star, Trash2, Users, X, XCircle } from 'lucide-react';
 import { api, DEMO, qs, uploadImages } from '../../lib/api';
 import { useApi, useDebounced } from '../../lib/hooks';
-import { brl, priceSuffix, PURPOSE_LABEL, STATUS_LABEL, TYPE_LABEL } from '../../lib/format';
+import { brl, priceSuffix, PURPOSE_LABEL, STATUS_LABEL, TYPE_LABEL, whatsappLink } from '../../lib/format';
+import { COMPANY } from '../../lib/company';
 import { useAuth, useToast } from '../../context/app';
-import { Badge, Button, Card, Chip, cx, Empty, ErrorBox, Field, Img, Input, MoneyInput, PageHeader, PageLoader, Select, statusTone, Textarea, Toggle } from '../../components/ui';
+import { Badge, Button, Card, Chip, cx, Empty, ErrorBox, Field, Img, Input, Modal, MoneyInput, PageHeader, PageLoader, Select, statusTone, Textarea, Toggle } from '../../components/ui';
 
 type Row = {
   id: number; code: string; title: string; purpose: string; type: string; status: string; price: number; neighborhood: string; city: string; state: string;
-  bedrooms: number; area: number; views: number; featured: number; cover: string | null; agent_name: string | null; owner_name: string | null; leads_count: number; favorites_count: number; agent_id: number | null;
+  bedrooms: number; area: number; views: number; featured: number; cover: string | null; agent_name: string | null; owner_name: string | null; review_note: string | null; leads_count: number; favorites_count: number; agent_id: number | null;
 };
 
 export function CrmProperties() {
@@ -54,7 +55,7 @@ export function CrmProperties() {
               </div>
               <div className="flex min-w-0 flex-1 flex-col justify-between py-1 pr-1">
                 <div>
-                  <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-semibold text-accent">{p.code} · {TYPE_LABEL[p.type]}</span><Badge tone={statusTone(p.status)}>{STATUS_LABEL[p.status]}</Badge></div>
+                  <div className="flex items-center justify-between gap-2"><span className="text-[11px] font-semibold text-accent">{p.code} · {TYPE_LABEL[p.type]}</span><Badge tone={p.status === 'inativo' && p.review_note ? 'danger' : statusTone(p.status)}>{p.status === 'pendente' ? 'Aguardando aprovação' : p.status === 'inativo' && p.review_note ? 'Reprovado' : STATUS_LABEL[p.status]}</Badge></div>
                   <p className="mt-0.5 line-clamp-1 font-semibold">{p.title}</p>
                   <p className="line-clamp-1 text-xs text-muted">{p.neighborhood}, {p.city} · {p.owner_name ? `Proprietário: ${p.owner_name}` : p.agent_name}</p>
                 </div>
@@ -113,6 +114,8 @@ export function PropertyForm() {
     setImages(d.images);
   }, [existing.data]);
 
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   if (!isNew && existing.loading && !existing.data) return <PageLoader />;
   if (!isNew && existing.error) return <ErrorBox message={existing.error} />;
   const canEdit = isNew || user!.role === 'admin' || existing.data?.agent_id === user!.id;
@@ -135,14 +138,14 @@ export function PropertyForm() {
     const first = Object.keys(errs)[0];
     if (first) setTimeout(() => document.querySelector(`[data-field="${first.split('.')[0]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   };
-  const save = async () => {
-    if (uploading) return toast('Aguarde o envio das fotos terminar.', 'info');
+  const save = async (opts: { silent?: boolean } = {}): Promise<boolean> => {
+    if (uploading) { toast('Aguarde o envio das fotos terminar.', 'info'); return false; }
     // Conferência rápida antes de enviar
     const local: Record<string, string> = {};
     if (!f.title.trim()) local.title = 'Informe o título';
     if (!Number(f.price)) local.price = 'Informe o valor';
     if (!f.city.trim()) local.city = 'Informe a cidade';
-    if (Object.keys(local).length) { showErrors(local); toast('Preencha os campos destacados.', 'error'); return; }
+    if (Object.keys(local).length) { showErrors(local); toast('Preencha os campos destacados.', 'error'); return false; }
     setSaving(true); setFields({});
     const num = (v: string) => (v === '' ? 0 : Number(v));
     const body = {
@@ -152,14 +155,41 @@ export function PropertyForm() {
     };
     try {
       if (isNew) { const r = await api<{ id: number }>('/properties', { body }); toast(f.status === 'disponivel' ? 'Imóvel publicado na vitrine!' : 'Imóvel cadastrado!'); nav(`/crm/imoveis/${r.id}`, { replace: true }); }
-      else { await api(`/properties/${id}`, { method: 'PUT', body }); toast(f.status === 'disponivel' && existing.data?.status === 'pendente' ? 'Imóvel aprovado e publicado!' : 'Alterações salvas.'); existing.reload(true); }
+      else {
+        await api(`/properties/${id}`, { method: 'PUT', body });
+        if (!opts.silent) { toast(f.status === 'disponivel' && existing.data?.status === 'pendente' ? 'Imóvel aprovado e publicado!' : 'Alterações salvas.'); existing.reload(true); }
+      }
+      return true;
     } catch (e: any) {
       const errs: Record<string, string> = e.fields ?? {};
       showErrors(errs);
       const firstKey = Object.keys(errs)[0];
       toast(firstKey ? `${LABELS[firstKey.split('.')[0]] ?? firstKey}: ${errs[firstKey]}` : e.message, 'error');
+      return false;
     } finally { setSaving(false); }
   };
+
+  /* Aprovar / reprovar imóvel enviado por proprietário */
+  const approve = async () => {
+    setReviewing(true);
+    try {
+      if (!(await save({ silent: true }))) return; // grava os ajustes feitos antes de publicar
+      await api(`/properties/${id}/review`, { body: { decision: 'aprovar' } });
+      toast('Imóvel aprovado e publicado na vitrine! O proprietário foi avisado.');
+      existing.reload(true);
+    } catch (e: any) { toast(e.message, 'error'); } finally { setReviewing(false); }
+  };
+  const reject = async (reason: string) => {
+    setReviewing(true);
+    try {
+      await api(`/properties/${id}/review`, { body: { decision: 'reprovar', reason } });
+      toast('Imóvel reprovado. O proprietário foi avisado com o motivo.', 'info');
+      setRejectOpen(false);
+      existing.reload(true);
+    } catch (e: any) { toast(e.message, 'error'); } finally { setReviewing(false); }
+  };
+  const d = existing.data;
+  const awaitingReview = !!d && (d.status === 'pendente' || (d.status === 'inativo' && !!d.review_note));
   const remove = async () => {
     if (!confirm('Excluir este imóvel permanentemente? Leads e visitas vinculados perderão a referência.')) return;
     await api(`/properties/${id}`, { method: 'DELETE' });
@@ -170,9 +200,36 @@ export function PropertyForm() {
     <div>
       <PageHeader back="/crm/imoveis" title={isNew ? 'Cadastrar imóvel' : existing.data?.title} subtitle={isNew ? 'Preencha os dados e publique na vitrine.' : `${existing.data?.code} · ${existing.data?.views} visualizações`}
         actions={!isNew && <Link to={`/imovel/${id}`} target={DEMO ? undefined : '_blank'}><Button variant="outline" size="sm" icon={<Eye className="size-4" />}>Ver anúncio</Button></Link>} />
-      {existing.data?.status === 'pendente' && (
-        <div className="mb-5 rounded-2xl border border-warning/30 bg-warning-soft p-4 text-sm">Este imóvel foi enviado por um proprietário. Revise os dados, complete as informações e altere o status para <b>Disponível</b> para publicá-lo.</div>
+      {awaitingReview && canEdit && (
+        <Card className={cx('mb-5 border-2 p-5', d.status === 'pendente' ? 'border-warning/50' : 'border-danger/40')}>
+          <div className="flex flex-wrap items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <Badge tone={d.status === 'pendente' ? 'warning' : 'danger'}>{d.status === 'pendente' ? 'Aguardando sua aprovação' : 'Reprovado'}</Badge>
+              <h2 className="mt-2 text-lg font-semibold">{d.status === 'pendente' ? 'Imóvel enviado para avaliação' : 'Este imóvel foi reprovado'}</h2>
+              {d.status === 'pendente'
+                ? <p className="mt-1 text-sm text-muted">Confira e complete os dados abaixo (fotos, valores, descrição). Ao aprovar, as alterações são salvas e o imóvel aparece na vitrine.</p>
+                : <p className="mt-1 text-sm text-muted">Motivo informado ao proprietário: <b className="text-text">“{d.review_note}”</b></p>}
+              {d.owner && (
+                <div className="mt-3 rounded-2xl bg-surface-2 p-3 text-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-faint">Enviado por</p>
+                  <p className="mt-1 font-semibold">{d.owner.name}</p>
+                  <p className="break-all text-muted">{d.owner.email}{d.owner.phone ? ` · ${d.owner.phone}` : ''}</p>
+                  {d.owner.phone && (
+                    <a href={whatsappLink(d.owner.phone, `Olá, ${d.owner.name.split(' ')[0]}! Aqui é da ${COMPANY.name}, sobre o imóvel "${d.title}" que você nos enviou.`)} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-success">
+                      <MessageCircle className="size-4" />Conversar no WhatsApp
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:w-56">
+              <Button size="lg" loading={reviewing || saving} disabled={uploading} onClick={approve} icon={<CheckCircle2 className="size-5" />}>{d.status === 'pendente' ? 'Aprovar e publicar' : 'Aprovar mesmo assim'}</Button>
+              {d.status === 'pendente' && <Button size="lg" variant="danger" disabled={reviewing} onClick={() => setRejectOpen(true)} icon={<XCircle className="size-5" />}>Reprovar</Button>}
+            </div>
+          </div>
+        </Card>
       )}
+      <RejectModal open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={reject} loading={reviewing} />
       {!canEdit && <div className="mb-5 rounded-2xl border border-line bg-surface-2 p-4 text-sm text-muted">Somente leitura: apenas o corretor responsável ou um administrador pode editar.</div>}
       <fieldset disabled={!canEdit} className="grid gap-5 xl:grid-cols-[1fr_380px]">
         <div className="space-y-5">
@@ -265,11 +322,36 @@ export function PropertyForm() {
             </Card>
           )}
           <div className="sticky top-4 space-y-2">
-            <Button size="lg" className="w-full" loading={saving || uploading} disabled={uploading} onClick={save}>{uploading ? 'Enviando fotos…' : isNew ? 'Cadastrar imóvel' : 'Salvar alterações'}</Button>
+            <Button size="lg" className="w-full" loading={saving || uploading} disabled={uploading} onClick={() => save()}>{uploading ? 'Enviando fotos…' : isNew ? 'Cadastrar imóvel' : 'Salvar alterações'}</Button>
             {!isNew && user!.role === 'admin' && <Button variant="danger" className="w-full" onClick={remove} icon={<Trash2 className="size-4" />}>Excluir imóvel</Button>}
           </div>
         </div>
       </fieldset>
     </div>
+  );
+}
+
+/* Motivo da reprovação (enviado ao proprietário) */
+const REJECT_REASONS = [
+  'Fotos insuficientes ou de baixa qualidade',
+  'Informações incompletas ou incorretas',
+  'Valor fora da realidade de mercado',
+  'Imóvel fora da nossa região de atuação',
+  'Documentação do imóvel pendente',
+];
+function RejectModal({ open, onClose, onConfirm, loading }: { open: boolean; onClose: () => void; onConfirm: (reason: string) => void; loading: boolean }) {
+  const [reason, setReason] = useState('');
+  useEffect(() => { if (open) setReason(''); }, [open]);
+  return (
+    <Modal open={open} onClose={onClose} title="Reprovar imóvel">
+      <p className="mb-3 text-sm text-muted">O proprietário recebe este motivo por notificação. Seja claro e cordial.</p>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {REJECT_REASONS.map((r) => (
+          <button key={r} type="button" onClick={() => setReason(r)} className={cx('rounded-full border px-3 py-1.5 text-xs', reason === r ? 'border-accent bg-accent-soft text-accent' : 'border-line text-muted')}>{r}</button>
+        ))}
+      </div>
+      <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ou escreva o motivo..." maxLength={500} className="min-h-24" />
+      <Button variant="danger" className="mt-4 w-full" loading={loading} disabled={reason.trim().length < 5} onClick={() => onConfirm(reason.trim())}>Reprovar e avisar o proprietário</Button>
+    </Modal>
   );
 }

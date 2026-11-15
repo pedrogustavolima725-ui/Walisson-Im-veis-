@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { all, get, run, now, tx } from '../db.ts';
 import { isStaff, requireAuth, requireRole } from '../lib/auth.ts';
-import { audit, notify, notifyStaff, upsertLeadForClient } from '../lib/events.ts';
+import { audit, leadActivity, notify, notifyStaff, upsertLeadForClient } from '../lib/events.ts';
 import { badRequest, forbidden, idParam, notFound, parse, zBool, zReqStr, zStr } from '../lib/http.ts';
 
 export const propertiesRouter = Router();
@@ -240,7 +240,7 @@ propertiesRouter.get('/manage/list', requireRole('corretor', 'admin'), async (re
   if (f.status) { where.push('p.status = ?'); params.push(f.status); }
   if (f.mine) { where.push('p.agent_id = ?'); params.push(req.user!.id); }
   const rows = await all<{ id: number }>(
-    `SELECT ${PUBLIC_COLS}, p.agent_id, a.name AS agent_name, o.name AS owner_name,
+    `SELECT ${PUBLIC_COLS}, p.agent_id, p.review_note, a.name AS agent_name, o.name AS owner_name,
       (SELECT COUNT(*) FROM leads l WHERE l.property_id = p.id) AS leads_count,
       (SELECT COUNT(*) FROM favorites f WHERE f.property_id = p.id) AS favorites_count
      FROM properties p LEFT JOIN users a ON a.id = p.agent_id LEFT JOIN users o ON o.id = p.owner_id
@@ -254,7 +254,41 @@ propertiesRouter.get('/manage/:id', requireRole('corretor', 'admin'), async (req
   const p = await get<any>('SELECT * FROM properties WHERE id = ?', idParam(req.params.id));
   if (!p) throw notFound();
   const images = (await all<{ url: string }>('SELECT url FROM property_images WHERE property_id = ? ORDER BY position, id', p.id)).map((i) => i.url);
-  res.json({ ...p, features: JSON.parse(p.features), images, featured: !!p.featured, accepts_financing: !!p.accepts_financing, accepts_pets: !!p.accepts_pets, furnished: !!p.furnished });
+  // Quem enviou o imóvel (anúncio feito por proprietário pelo app)
+  const owner = p.owner_id ? await get('SELECT id, name, email, phone FROM users WHERE id = ?', p.owner_id) : null;
+  res.json({ ...p, owner, features: JSON.parse(p.features), images, featured: !!p.featured, accepts_financing: !!p.accepts_financing, accepts_pets: !!p.accepts_pets, furnished: !!p.furnished });
+});
+
+/* ---------------- Aprovar / reprovar imóvel enviado por proprietário ---------------- */
+propertiesRouter.post('/:id/review', requireRole('corretor', 'admin'), async (req, res) => {
+  const id = idParam(req.params.id);
+  const b = parse(z.object({ decision: z.enum(['aprovar', 'reprovar']), reason: zStr(500).optional() }), req.body);
+  const p = await get<{ id: number; title: string; status: string; price: number; city: string; agent_id: number | null; owner_id: number | null; review_note: string | null }>(
+    'SELECT id, title, status, price, city, agent_id, owner_id, review_note FROM properties WHERE id = ?', id,
+  );
+  if (!p) throw notFound('Imóvel não encontrado.');
+  if (req.user!.role !== 'admin' && p.agent_id !== req.user!.id) throw forbidden('Apenas o corretor responsável ou um administrador pode avaliar este imóvel.');
+  const reviewable = p.status === 'pendente' || (p.status === 'inativo' && p.review_note);
+  if (!reviewable) throw badRequest('Este imóvel não está aguardando avaliação.');
+  const t = now();
+  // lead de captação do proprietário (criado quando ele enviou o imóvel)
+  const lead = p.owner_id ? await get<{ id: number }>("SELECT id FROM leads WHERE user_id = ? AND source = 'captacao' ORDER BY id DESC LIMIT 1", p.owner_id) : undefined;
+  if (b.decision === 'aprovar') {
+    if (!(p.price > 0) || !p.city) throw badRequest('Complete o valor e a cidade antes de aprovar.');
+    await run("UPDATE properties SET status = 'disponivel', review_note = NULL, reviewed_at = ?, agent_id = COALESCE(agent_id, ?), updated_at = ? WHERE id = ?", t, req.user!.id, t, id);
+    await notify(p.owner_id, { type: 'imovel', title: 'Seu imóvel foi aprovado e publicado!', body: p.title, link: `/imovel/${id}` });
+    if (lead) await leadActivity(lead.id, req.user!.id, 'sistema', `Imóvel aprovado e publicado: ${p.title}`);
+    await audit(req, 'property.approve', { id });
+    await matchSavedSearches(id);
+  } else {
+    const reason = b.reason?.trim();
+    if (!reason || reason.length < 5) throw badRequest('Informe o motivo da reprovação.', { reason: 'Explique o motivo (mín. 5 caracteres)' });
+    await run("UPDATE properties SET status = 'inativo', review_note = ?, reviewed_at = ?, updated_at = ? WHERE id = ?", reason, t, t, id);
+    await notify(p.owner_id, { type: 'imovel', title: 'Seu imóvel não foi aprovado', body: `${p.title} — ${reason}`, link: '/anunciar' });
+    if (lead) await leadActivity(lead.id, req.user!.id, 'sistema', `Imóvel reprovado: ${p.title}. Motivo: ${reason}`);
+    await audit(req, 'property.reject', { id, reason });
+  }
+  res.json({ ok: true });
 });
 
 propertiesRouter.post('/', requireRole('corretor', 'admin'), async (req, res) => {
@@ -350,7 +384,7 @@ propertiesRouter.post('/submit', requireAuth, async (req, res) => {
 });
 
 propertiesRouter.get('/mine/submissions', requireAuth, async (req, res) => {
-  res.json(await withExtras(await all<{ id: number }>(`SELECT ${PUBLIC_COLS} FROM properties p WHERE p.owner_id = ? ORDER BY p.created_at DESC`, req.user!.id)));
+  res.json(await withExtras(await all<{ id: number }>(`SELECT ${PUBLIC_COLS}, p.review_note FROM properties p WHERE p.owner_id = ? ORDER BY p.created_at DESC`, req.user!.id)));
 });
 
 /* ---------------- Upload de fotos ---------------- */

@@ -469,7 +469,18 @@ export function Announce() {
             <div>
               <h3 className="mb-3 font-semibold">Meus anúncios</h3>
               <div className="space-y-3">
-                {mine.data.map((p) => <PropertyRow key={p.id} p={p} right={<Badge tone={statusTone(p.status)}>{STATUS_LABEL[p.status]}</Badge>} />)}
+                {mine.data.map((p) => {
+                  const note = (p as PropertySummary & { review_note?: string | null }).review_note;
+                  const rejected = p.status === 'inativo' && !!note;
+                  const label = p.status === 'disponivel' ? 'Publicado' : p.status === 'pendente' ? 'Em análise' : rejected ? 'Não aprovado' : STATUS_LABEL[p.status];
+                  return (
+                    <div key={p.id} className="space-y-1.5">
+                      <PropertyRow p={p} right={<Badge tone={rejected ? 'danger' : statusTone(p.status)}>{label}</Badge>} />
+                      {rejected && <p className="rounded-2xl bg-danger-soft px-3 py-2 text-xs text-danger">Motivo: {note}. Você pode enviar o imóvel de novo com as correções.</p>}
+                      {p.status === 'pendente' && <p className="px-2 text-xs text-muted">Nossa equipe está avaliando. Você será avisado assim que for aprovado.</p>}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
