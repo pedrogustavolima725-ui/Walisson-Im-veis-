@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlarmClock, Bell, CheckCircle2, ChevronRight, Clock, Mail, MessageCircle, Phone, Plus, Send, SkipForward, Smartphone, Snowflake, Trash2, Undo2 } from 'lucide-react';
+import { AlarmClock, Bell, Pencil, CheckCircle2, ChevronRight, Clock, Mail, MessageCircle, Phone, Plus, Send, SkipForward, Smartphone, Snowflake, Trash2, Undo2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useApi, useDebounced } from '../../lib/hooks';
 import { dateTime, relative, SOURCE_LABEL, STAGE_LABEL, STAGES, whatsappLink } from '../../lib/format';
@@ -250,11 +250,220 @@ export function Campaigns() {
 }
 
 type Preview = { total: number; over_limit: boolean; phone: number; app: number; email: number; sample: string[]; email_enabled: boolean };
-const TEMPLATES = [
-  { label: 'Imóvel novo', title: 'Imóvel novo para você', text: 'Olá, {nome}! Aqui é {corretor} da Walisson Imóveis. Acabou de entrar um imóvel que tem tudo a ver com o que você procura: {imovel}. Quer que eu te mande mais fotos ou marque uma visita?' },
-  { label: 'Reativar lead', title: 'Ainda procurando imóvel?', text: 'Oi, {nome}! Tudo bem? Aqui é {corretor} da Walisson Imóveis. Você ainda está procurando imóvel? Separei algumas opções novas e posso te mandar agora mesmo.' },
-  { label: 'Baixou o preço', title: 'O preço baixou!', text: 'Olá, {nome}! Boa notícia: o imóvel {imovel} teve redução de preço. Se ainda tiver interesse, me chama que eu te passo os detalhes. — {corretor}, Walisson Imóveis' },
+export type Template = { id?: number; title: string; body: string; shared?: number; owner_id?: number; owner_name?: string | null };
+export const BUILTIN_TEMPLATES: Template[] = [
+  { title: 'Primeiro contato', body: 'Olá, {nome}! Aqui é {corretor}, da Walisson Imóveis. Vi seu interesse no imóvel {imovel} e estou à disposição para te ajudar. Posso te mandar mais fotos e informações?' },
+  { title: 'Follow-up', body: 'Oi, {nome}! Tudo bem? Passando para saber se você conseguiu pensar sobre o imóvel {imovel}. Ficou alguma dúvida? Estou à disposição. — {corretor}' },
+  { title: 'Convite para visita', body: '{nome}, que tal conhecer o imóvel {imovel} pessoalmente? Tenho horários disponíveis esta semana. Qual dia fica melhor para você?' },
+  { title: 'Imóvel novo', body: 'Olá, {nome}! Aqui é {corretor} da Walisson Imóveis. Acabou de entrar um imóvel que tem tudo a ver com o que você procura: {imovel}. Quer que eu te mande mais fotos ou marque uma visita?' },
+  { title: 'Reativar lead', body: 'Oi, {nome}! Tudo bem? Aqui é {corretor} da Walisson Imóveis. Você ainda está procurando imóvel? Separei algumas opções novas e posso te mandar agora mesmo.' },
+  { title: 'Baixou o preço', body: 'Olá, {nome}! Boa notícia: o imóvel {imovel} teve redução de preço. Se ainda tiver interesse, me chama que eu te passo os detalhes. — {corretor}, Walisson Imóveis' },
+  { title: 'Pedido de documentos', body: 'Olá, {nome}! Para darmos andamento, preciso dos seguintes documentos: RG, CPF, comprovante de renda e comprovante de residência. Pode me enviar por aqui mesmo? — {corretor}' },
+  { title: 'Parabéns pela compra', body: '{nome}, parabéns pela conquista! 🎉 Foi um prazer te atender. Se precisar de qualquer coisa, conte comigo. — {corretor}, Walisson Imóveis' },
 ];
+export const VARIABLES = [
+  { key: '{nome}', label: 'Primeiro nome do cliente' },
+  { key: '{nome_completo}', label: 'Nome completo' },
+  { key: '{corretor}', label: 'Seu primeiro nome' },
+  { key: '{imovel}', label: 'Título do imóvel' },
+  { key: '{link}', label: 'Link do imóvel' },
+];
+/** Troca as variáveis pelos dados do cliente e limpa espaços que sobram (ex.: lead sem imóvel). */
+export function renderMessage(tpl: string, v: { name: string; agent: string; property?: string | null; link?: string }) {
+  return tpl
+    .replaceAll('{nome_completo}', v.name.trim())
+    .replaceAll('{nome}', firstName(v.name))
+    .replaceAll('{corretor}', firstName(v.agent))
+    .replaceAll('{imovel}', v.property ?? '')
+    .replaceAll('{link}', v.link ?? location.origin)
+    .replace(/[ \t]+([.,?!:])/g, '$1')
+    .replace(/[ \t]{2,}/g, ' ');
+}
+export function useTemplates() {
+  const r = useApi<{ items: Template[]; email_enabled: boolean }>('/crm/templates');
+  return { ...r, all: [...(r.data?.items ?? []), ...BUILTIN_TEMPLATES], emailEnabled: !!r.data?.email_enabled };
+}
+function TemplateChips({ items, onPick }: { items: Template[]; onPick: (t: Template) => void }) {
+  return (
+    <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      {items.map((t, i) => (
+        <Chip key={`${t.id ?? 'b'}-${i}`} className="h-9" onClick={() => onPick(t)}>{t.id ? '★ ' : ''}{t.title}</Chip>
+      ))}
+    </div>
+  );
+}
+function VariableButtons({ onInsert }: { onInsert: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+      Inserir:
+      {VARIABLES.map((v) => <button key={v.key} type="button" title={v.label} onClick={() => onInsert(v.key)} className="rounded-full bg-surface-2 px-2.5 py-1 font-mono text-[11px] text-text hover:bg-surface-3">{v.key}</button>)}
+    </div>
+  );
+}
+const appendVar = (m: string, v: string) => (m && !/\s$/.test(m) ? `${m} ${v}` : m + v);
+function Bubble({ children }: { children: React.ReactNode }) {
+  return <div className="max-w-sm whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-[#dcf8c6] px-3.5 py-2.5 text-sm text-[#1c1814]">{children}</div>;
+}
+function SaveTemplateModal({ open, body, onClose, onSaved }: { open: boolean; body: string; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [title, setTitle] = useState('');
+  useEffect(() => { if (open) setTitle(''); }, [open]);
+  const save = async () => {
+    try { await api('/crm/templates', { body: { title, body } }); toast('Modelo salvo em Mensagens prontas.'); onSaved(); } catch (e: any) { toast(e.message, 'error'); }
+  };
+  return (
+    <Modal open={open} onClose={onClose} title="Salvar como mensagem pronta">
+      <Field label="Nome do modelo"><Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} placeholder="Ex.: Convite para o plantão de sábado" autoFocus /></Field>
+      <Button className="mt-4 w-full" disabled={!title.trim()} onClick={save}>Salvar</Button>
+    </Modal>
+  );
+}
+
+/* ============================ Mensagem personalizada para um lead ============================ */
+export function MessageComposer({ open, onClose, lead, onSent }: {
+  open: boolean; onClose: () => void; onSent: () => void;
+  lead: { id: number; name: string; phone: string | null; email: string | null; user_id: number | null; property: { id: number; title: string } | null };
+}) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const tpl = useTemplates();
+  const [text, setText] = useState('');
+  const [subject, setSubject] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (open) { setText(''); setSubject(''); } }, [open]);
+  const link = lead.property ? `${location.origin}/imovel/${lead.property.id}` : location.origin;
+  const vars = { name: lead.name, agent: user!.name, property: lead.property?.title ?? null, link };
+  const final = renderMessage(text, vars).trim();
+  const usesProperty = /\{imovel\}|\{link\}/.test(text) && !lead.property;
+
+  const send = async (channel: 'whatsapp' | 'app' | 'email') => {
+    setBusy(channel);
+    try {
+      const r = await api<{ followupDone?: boolean }>(`/crm/leads/${lead.id}/message`, { body: { channel, text: final, ...(channel === 'email' && subject.trim() ? { subject: subject.trim() } : {}) } });
+      toast(channel === 'whatsapp' ? 'Registrado no histórico.' : channel === 'app' ? 'Mensagem enviada no chat do app.' : 'E-mail enviado.');
+      if (r.followupDone) toast('Follow-up concluído. Marque o próximo contato.', 'info');
+      onSent();
+    } catch (e: any) { toast(e.message, 'error'); } finally { setBusy(null); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Mensagem para ${firstName(lead.name)}`} wide>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-faint">Mensagens prontas</p>
+      <TemplateChips items={tpl.all} onPick={(t) => setText(t.body)} />
+      <Textarea value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} className="mt-3 min-h-32" placeholder="Escolha uma mensagem pronta acima ou escreva do seu jeito..." />
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <VariableButtons onInsert={(v) => setText((m) => appendVar(m, v))} />
+        {text.trim() && <button type="button" onClick={() => setSaving(true)} className="text-xs font-semibold text-accent">Salvar como modelo</button>}
+      </div>
+      {usesProperty && <p className="mt-2 text-xs text-warning">Este lead não tem imóvel de interesse — {'{imovel}'} e {'{link}'} ficam sem o imóvel.</p>}
+      {final && (
+        <div className="mt-4">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-faint">Como {firstName(lead.name)} vai ver</p>
+          <Bubble>{final}</Bubble>
+        </div>
+      )}
+      <div className="mt-5 grid gap-2 sm:grid-cols-3">
+        <a href={final && lead.phone ? whatsappLink(lead.phone, final) : undefined} target="_blank" rel="noopener noreferrer"
+          onClick={() => final && lead.phone && send('whatsapp')}
+          className={cx('inline-flex h-11 items-center justify-center gap-2 rounded-full bg-success text-sm font-semibold text-white', (!final || !lead.phone) && 'pointer-events-none opacity-40')}>
+          <MessageCircle className="size-4" />WhatsApp
+        </a>
+        <Button variant="secondary" loading={busy === 'app'} disabled={!final || !lead.user_id} onClick={() => send('app')} icon={<Smartphone className="size-4" />}>Chat do app</Button>
+        <Button variant="secondary" loading={busy === 'email'} disabled={!final || !lead.email || !tpl.emailEnabled} onClick={() => send('email')} icon={<Mail className="size-4" />}>E-mail</Button>
+      </div>
+      <p className="mt-2 text-[11px] text-faint">
+        {!lead.phone && 'Sem telefone para WhatsApp. '}
+        {!lead.user_id && 'Chat do app: só para quem tem conta no app. '}
+        {!lead.email ? 'Sem e-mail cadastrado.' : !tpl.emailEnabled ? 'E-mail: falta ativar no servidor (chave do Brevo).' : ''}
+      </p>
+      {lead.email && tpl.emailEnabled && <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={100} placeholder="Assunto do e-mail (opcional)" className="mt-2 h-10 text-sm" />}
+      <SaveTemplateModal open={saving} body={text} onClose={() => setSaving(false)} onSaved={() => { setSaving(false); tpl.reload(true); }} />
+    </Modal>
+  );
+}
+
+/* ============================ Página: mensagens prontas ============================ */
+export function MessageTemplates() {
+  const { user } = useAuth();
+  const toast = useToast();
+  const tpl = useTemplates();
+  const [editing, setEditing] = useState<Template | null>(null);
+  if (tpl.loading && !tpl.data) return <PageLoader />;
+  if (tpl.error) return <ErrorBox message={tpl.error} onRetry={tpl.reload} />;
+  const mine = tpl.data?.items ?? [];
+  const canEdit = (t: Template) => t.owner_id === user!.id || (user!.role === 'admin' && !!t.shared);
+  return (
+    <div className="mx-auto max-w-3xl">
+      <PageHeader title="Mensagens prontas" subtitle="Modelos para WhatsApp, chat e disparos — o nome do cliente e o imóvel entram sozinhos."
+        actions={<Button size="sm" icon={<Plus className="size-4" />} onClick={() => setEditing({ title: '', body: '' })}>Nova</Button>} />
+      <Card className="mb-4 p-4 text-sm text-muted">
+        <p className="mb-2 font-semibold text-text">Variáveis que você pode usar</p>
+        <ul className="grid gap-1 sm:grid-cols-2">{VARIABLES.map((v) => <li key={v.key}><code className="rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-text">{v.key}</code> {v.label}</li>)}</ul>
+      </Card>
+      <h3 className="mb-2 px-1 text-sm font-semibold">Suas mensagens{user!.role === 'admin' ? ' e as da equipe' : ' e as da equipe'}</h3>
+      {!mine.length ? (
+        <Card className="mb-6 p-6 text-center text-sm text-muted">Você ainda não criou nenhuma. Toque em <b>Nova</b> ou use um modelo abaixo como ponto de partida.</Card>
+      ) : (
+        <div className="mb-6 space-y-2">
+          {mine.map((t) => (
+            <Card key={t.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{t.title} {!!t.shared && <Badge tone="info" className="ml-1">Equipe</Badge>}</p>
+                  <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-muted">{t.body}</p>
+                  {t.owner_id !== user!.id && t.owner_name && <p className="mt-1 text-[11px] text-faint">por {t.owner_name}</p>}
+                </div>
+                {canEdit(t) && (
+                  <div className="flex shrink-0 gap-1">
+                    <Button size="sm" variant="secondary" onClick={() => setEditing(t)}>Editar</Button>
+                    <Button size="sm" variant="ghost" aria-label="Excluir" icon={<Trash2 className="size-4" />} onClick={async () => { if (confirm(`Excluir "${t.title}"?`)) { await api(`/crm/templates/${t.id}`, { method: 'DELETE' }); toast('Modelo excluído.', 'info'); tpl.reload(true); } }} />
+                  </div>
+                )}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      <h3 className="mb-2 px-1 text-sm font-semibold">Modelos do app</h3>
+      <div className="space-y-2">
+        {BUILTIN_TEMPLATES.map((t) => (
+          <Card key={t.title} className="flex items-start justify-between gap-3 p-4">
+            <div className="min-w-0"><p className="font-semibold">{t.title}</p><p className="mt-1 line-clamp-2 text-sm text-muted">{t.body}</p></div>
+            <Button size="sm" variant="ghost" onClick={() => setEditing({ title: t.title, body: t.body })}>Personalizar</Button>
+          </Card>
+        ))}
+      </div>
+      <TemplateEditor tpl={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); tpl.reload(true); }} />
+    </div>
+  );
+}
+
+function TemplateEditor({ tpl, onClose, onSaved }: { tpl: Template | null; onClose: () => void; onSaved: () => void }) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const [f, setF] = useState({ title: '', body: '', shared: false });
+  useEffect(() => { if (tpl) setF({ title: tpl.title, body: tpl.body, shared: !!tpl.shared }); }, [tpl]);
+  const save = async () => {
+    try {
+      if (tpl?.id) await api(`/crm/templates/${tpl.id}`, { method: 'PUT', body: f });
+      else await api('/crm/templates', { body: f });
+      toast('Mensagem pronta salva.'); onSaved();
+    } catch (e: any) { toast(e.message, 'error'); }
+  };
+  return (
+    <Modal open={!!tpl} onClose={onClose} title={tpl?.id ? 'Editar mensagem pronta' : 'Nova mensagem pronta'} wide>
+      <div className="space-y-3">
+        <Field label="Nome"><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={60} placeholder="Ex.: Plantão de sábado" /></Field>
+        <Field label="Mensagem"><Textarea value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} maxLength={1500} className="min-h-36" /></Field>
+        <VariableButtons onInsert={(v) => setF((x) => ({ ...x, body: appendVar(x.body, v) }))} />
+        {f.body.trim() && <div><p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-faint">Exemplo</p><Bubble>{renderMessage(f.body, { name: 'Maria Silva', agent: user!.name, property: 'Apartamento 3 quartos no Centro', link: `${location.origin}/imovel/1` })}</Bubble></div>}
+        {user!.role === 'admin' && <Toggle checked={f.shared} onChange={(v) => setF({ ...f, shared: v })} label="Disponível para toda a equipe" description="Os corretores podem usar, mas só o administrador altera." />}
+        <Button className="w-full" disabled={!f.title.trim() || !f.body.trim()} onClick={save}>Salvar</Button>
+      </div>
+    </Modal>
+  );
+}
 
 export function CampaignNew() {
   const { user } = useAuth();
@@ -275,6 +484,8 @@ export function CampaignNew() {
   const [sending, setSending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const agents = useApi<{ id: number; name: string }[]>(admin ? '/crm/agents' : null);
+  const tpl = useTemplates();
+  const [savingTpl, setSavingTpl] = useState(false);
   const props = useApi<{ id: number; code: string; title: string; status: string }[]>('/properties/manage/list');
 
   const audienceBody = useMemo(() => ({
@@ -290,12 +501,11 @@ export function CampaignNew() {
 
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const prop = props.data?.find((p) => String(p.id) === propertyId);
-  const sample = (preview?.sample[0] ?? 'Maria Silva').split(' ')[0];
-  const rendered = message
-    .replaceAll('{nome}', sample).replaceAll('{corretor}', firstName(user!.name))
-    .replaceAll('{imovel}', prop?.title ?? '[imóvel]').replaceAll('{link}', prop ? `${location.origin}/imovel/${prop.id}` : location.origin)
+  const sampleName = preview?.sample[0] ?? 'Maria Silva';
+  const sample = firstName(sampleName);
+  const rendered = renderMessage(message, { name: sampleName, agent: user!.name, property: prop?.title ?? '[imóvel]', link: prop ? `${location.origin}/imovel/${prop.id}` : location.origin })
     + (prop && !message.includes('{link}') ? `\n\n${location.origin}/imovel/${prop.id}` : '');
-  const insert = (v: string) => setMessage((m) => (m && !m.endsWith(' ') ? `${m} ${v}` : m + v));
+  const insert = (v: string) => setMessage((m) => appendVar(m, v));
   const reach = preview ? Math.max(channels.includes('whatsapp') ? preview.phone : 0, channels.includes('app') ? preview.app : 0, channels.includes('email') ? preview.email : 0) : 0;
 
   const send = async () => {
@@ -374,9 +584,8 @@ export function CampaignNew() {
 
         <Card className="p-5">
           <h3 className="mb-3 font-semibold">3. Mensagem</h3>
-          <div className="no-scrollbar mb-3 flex gap-1.5 overflow-x-auto">
-            {TEMPLATES.map((t) => <Chip key={t.label} className="h-9" onClick={() => { setTitle(t.title); setMessage(t.text); }}>{t.label}</Chip>)}
-          </div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-faint">Mensagens prontas <Link to="/crm/modelos" className="font-normal normal-case tracking-normal text-accent">· gerenciar</Link></p>
+          <div className="mb-3"><TemplateChips items={tpl.all} onPick={(t) => { setTitle(t.title); setMessage(t.body); }} /></div>
           <div className="space-y-3">
             <Field label="Título (aparece na notificação e no assunto do e-mail)"><Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder="Ex.: Imóvel novo no Jardim América" /></Field>
             <Field label="Imóvel (opcional — o link vai junto)">
@@ -385,14 +594,15 @@ export function CampaignNew() {
             <Field label="Texto">
               <Textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={1500} className="min-h-32" placeholder="Olá, {nome}! ..." />
             </Field>
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
-              Inserir:
-              {['{nome}', '{corretor}', '{imovel}', '{link}'].map((v) => <button key={v} type="button" onClick={() => insert(v)} className="rounded-full bg-surface-2 px-2.5 py-1 font-mono text-[11px] text-text hover:bg-surface-3">{v}</button>)}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <VariableButtons onInsert={insert} />
+              {message.trim() && <button type="button" onClick={() => setSavingTpl(true)} className="text-xs font-semibold text-accent">Salvar como modelo</button>}
             </div>
             {message.trim() && (
               <div>
                 <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-faint">Como {sample} vai ver</p>
-                <div className="max-w-sm whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-[#dcf8c6] px-3.5 py-2.5 text-sm text-[#1c1814]">{rendered}</div>
+                <Bubble>{rendered}</Bubble>
+                <p className="mt-1.5 text-[11px] text-faint">Cada contato recebe com o próprio nome. Na fila do WhatsApp você ainda pode ajustar a mensagem de cada pessoa antes de enviar.</p>
               </div>
             )}
           </div>
@@ -405,6 +615,7 @@ export function CampaignNew() {
         </Button>
       </div>
 
+      <SaveTemplateModal open={savingTpl} body={message} onClose={() => setSavingTpl(false)} onSaved={() => { setSavingTpl(false); tpl.reload(true); }} />
       <Modal open={confirming} onClose={() => setConfirming(false)} title="Confirmar disparo">
         <p className="text-sm text-muted">
           “{title}” para <b className="text-text">{preview?.total}</b> contatos ({reach} alcançáveis pelos canais escolhidos).
@@ -429,6 +640,7 @@ export function CampaignDetail() {
   const nav = useNavigate();
   const { data, setData, loading, error, reload } = useApi<CampaignFull>(`/crm/campaigns/${id}`, [id]);
   const [filter, setFilter] = useState<'todos' | 'fila' | 'enviados'>('todos');
+  const [editText, setEditText] = useState<{ id: number; text: string } | null>(null);
   if (loading && !data) return <PageLoader />;
   if (error || !data) return <ErrorBox message={error ?? 'Disparo não encontrado'} onRetry={reload} />;
 
@@ -441,6 +653,13 @@ export function CampaignDetail() {
   const setStatus = (r: Recipient, wa_status: string) => {
     setData((d) => d && { ...d, recipients: d.recipients.map((x) => (x.id === r.id ? { ...x, wa_status } : x)) });
     api(`/crm/campaigns/${data.id}/recipients/${r.id}`, { method: 'PATCH', body: { wa_status } }).catch((e) => { toast(e.message, 'error'); reload(true); });
+  };
+  const saveText = (r: Recipient, text: string) => {
+    const t = text.trim();
+    setEditText(null);
+    if (!t || t === r.text) return;
+    setData((d) => d && { ...d, recipients: d.recipients.map((x) => (x.id === r.id ? { ...x, text: t } : x)) });
+    api(`/crm/campaigns/${data.id}/recipients/${r.id}`, { method: 'PATCH', body: { text: t } }).catch((e) => { toast(e.message, 'error'); reload(true); });
   };
   const shown = rs.filter((r) => filter === 'todos' || (filter === 'fila' ? r.wa_status === 'pendente' : r.wa_status === 'enviado' || r.app_status === 'enviado' || r.email_status === 'enviado'));
 
@@ -468,8 +687,22 @@ export function CampaignDetail() {
                 <Avatar name={next.name} size={44} />
                 <div className="min-w-0"><p className="truncate font-semibold">{next.name}</p><p className="text-xs text-muted">{next.phone}</p></div>
               </div>
-              <div className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-[#dcf8c6] px-3.5 py-2.5 text-sm text-[#1c1814]">{next.text}</div>
-              <a href={whatsappLink(next.phone, next.text)} target="_blank" rel="noopener noreferrer" onClick={() => setStatus(next, 'enviado')}
+              {editText?.id === next.id ? (
+                <div className="mt-3">
+                  <Textarea value={editText.text} onChange={(e) => setEditText({ id: next.id, text: e.target.value })} maxLength={1500} className="min-h-32" autoFocus />
+                  <div className="mt-2 flex justify-end gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setEditText(null)}>Cancelar</Button>
+                    <Button size="sm" onClick={() => saveText(next, editText.text)}>Salvar para {firstName(next.name)}</Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <div className="max-h-48 overflow-y-auto"><Bubble>{next.text}</Bubble></div>
+                  <button type="button" onClick={() => setEditText({ id: next.id, text: next.text })} className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-accent"><Pencil className="size-3" />Personalizar para {firstName(next.name)}</button>
+                </div>
+              )}
+              <a href={whatsappLink(next.phone, editText?.id === next.id && editText.text.trim() ? editText.text.trim() : next.text)} target="_blank" rel="noopener noreferrer"
+                onClick={() => { if (editText?.id === next.id) saveText(next, editText.text); setStatus(next, 'enviado'); }}
                 className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-success text-[15px] font-semibold text-white active:scale-[.98]">
                 <Send className="size-5" />Abrir no WhatsApp ({waTotal - queue.length + 1} de {waTotal})
               </a>

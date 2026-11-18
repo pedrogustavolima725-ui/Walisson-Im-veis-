@@ -139,3 +139,50 @@ test('disparo: filtros, opt-out, personalização, aviso no app e fila do WhatsA
   // Cliente não acessa o CRM
   assert.equal((await req(cli, '/crm/campaigns')).status, 403);
 });
+
+test('mensagens prontas: cada corretor tem as suas e não mexe nas dos outros', async () => {
+  const c = await req(ana, '/crm/templates', { title: 'Plantão', body: 'Oi {nome}, plantão sábado!', shared: true });
+  assert.equal(c.status, 201);
+  let list = (await req(ana, '/crm/templates')).body;
+  assert.equal(list.items.length, 1);
+  assert.equal(list.items[0].shared, 0); // corretor não compartilha com a equipe
+  assert.equal(list.email_enabled, false);
+  assert.equal((await req(beto, '/crm/templates')).body.items.length, 0);
+  assert.equal((await req(beto, `/crm/templates/${c.body.id}`, { title: 'x', body: 'y' }, 'PUT')).status, 403);
+  assert.equal((await req(beto, `/crm/templates/${c.body.id}`, undefined, 'DELETE')).status, 403);
+  assert.equal((await req(ana, `/crm/templates/${c.body.id}`, { title: 'Plantão de sábado', body: 'Oi {nome}!' }, 'PUT')).status, 200);
+  list = (await req(ana, '/crm/templates')).body;
+  assert.equal(list.items[0].title, 'Plantão de sábado');
+  assert.equal((await req(ana, `/crm/templates/${c.body.id}`, undefined, 'DELETE')).status, 200);
+  assert.equal((await req(cli, '/crm/templates')).status, 403);
+});
+
+test('mensagem personalizada para um lead: WhatsApp, chat do app e e-mail', async () => {
+  const lead = await get<any>("SELECT id FROM leads WHERE name = 'Carla Cliente'");
+  // WhatsApp: fica registrado no histórico
+  assert.equal((await req(ana, `/crm/leads/${lead.id}/message`, { channel: 'whatsapp', text: 'Oi Carla, separei 3 opções!' })).status, 201);
+  assert.ok((await all<any>("SELECT content FROM lead_activities WHERE lead_id = ? AND type = 'whatsapp'", lead.id)).some((a) => a.content.includes('separei 3 opções')));
+  // Chat do app: chega como mensagem para a cliente, que pode responder
+  const r = await req(ana, `/crm/leads/${lead.id}/message`, { channel: 'app', text: 'Carla, posso te ligar amanhã?' });
+  assert.equal(r.status, 201);
+  const conv = await req(cli, `/me/conversations/${r.body.conversation}`);
+  assert.equal(conv.status, 200);
+  assert.ok(JSON.stringify(conv.body).includes('Carla, posso te ligar amanhã?'));
+  // Lead sem conta não recebe pelo app; e-mail desativado sem Brevo
+  assert.equal((await req(ana, `/crm/leads/${leadId}/message`, { channel: 'app', text: 'oi' })).status, 400);
+  assert.equal((await req(ana, `/crm/leads/${leadId}/message`, { channel: 'email', text: 'oi' })).status, 400);
+  // Outro corretor não manda mensagem para lead que não é dele
+  assert.equal((await req(beto, `/crm/leads/${lead.id}/message`, { channel: 'whatsapp', text: 'oi' })).status, 403);
+});
+
+test('disparo: mensagem ajustada só para um contato da fila', async () => {
+  const c = (await req(ana, '/crm/campaigns')).body[0];
+  const d = (await req(ana, `/crm/campaigns/${c.id}`)).body;
+  const r = d.recipients.find((x: any) => x.wa_status === 'pendente');
+  assert.equal((await req(ana, `/crm/campaigns/${c.id}/recipients/${r.id}`, { text: 'Texto só para ele' }, 'PATCH')).status, 200);
+  const after = (await req(ana, `/crm/campaigns/${c.id}`)).body.recipients;
+  assert.equal(after.find((x: any) => x.id === r.id).text, 'Texto só para ele');
+  assert.equal(after.find((x: any) => x.id === r.id).wa_status, 'pendente');
+  assert.notEqual(after.find((x: any) => x.id !== r.id).text, 'Texto só para ele');
+  assert.equal((await req(ana, `/crm/campaigns/${c.id}/recipients/${r.id}`, { text: '   ' }, 'PATCH')).status, 400);
+});

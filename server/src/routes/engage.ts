@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { config } from '../config.ts';
 import { all, get, run, now } from '../db.ts';
 import { requireRole, type SessionUser } from '../lib/auth.ts';
-import { audit, leadActivity } from '../lib/events.ts';
+import { audit, leadActivity, notify } from '../lib/events.ts';
 import { badRequest, forbidden, idParam, notFound, parse, zReqStr, zStr } from '../lib/http.ts';
 import { emailLayout, mailEnabled, sendMail } from '../lib/mailer.ts';
 import { sendPush } from '../lib/push.ts';
@@ -147,10 +147,13 @@ engageRouter.post('/campaigns', async (req, res) => {
   const link = prop ? `${config.appUrl}/imovel/${prop.id}` : config.appUrl;
   const render = (r: Recipient) => {
     let t = b.message
+      .replaceAll('{nome_completo}', r.name.trim())
       .replaceAll('{nome}', firstName(r.name))
       .replaceAll('{corretor}', firstName(u.name))
       .replaceAll('{imovel}', prop?.title ?? '')
-      .replaceAll('{link}', link);
+      .replaceAll('{link}', link)
+      .replace(/[ \t]+([.,?!:])/g, '$1')
+      .replace(/[ \t]{2,}/g, ' ');
     if (prop && !b.message.includes('{link}')) t += `\n\n${link}`;
     return t;
   };
@@ -258,7 +261,10 @@ engageRouter.patch('/campaigns/:id/recipients/:rid', async (req, res) => {
   const c = await loadCampaign(idParam(req.params.id), req.user!);
   const r = await get<{ id: number; lead_id: number | null; wa_status: string }>('SELECT id, lead_id, wa_status FROM campaign_recipients WHERE id = ? AND campaign_id = ?', idParam(req.params.rid), c.id);
   if (!r) throw notFound();
-  const b = parse(z.object({ wa_status: z.enum(['pendente', 'enviado', 'pulado']) }), req.body);
+  const b = parse(z.object({ wa_status: z.enum(['pendente', 'enviado', 'pulado']).optional(), text: zReqStr(1500, 'A mensagem não pode ficar vazia').optional() }), req.body);
+  // Mensagem personalizada só para este contato
+  if (b.text !== undefined) await run('UPDATE campaign_recipients SET text = ? WHERE id = ?', b.text, r.id);
+  if (!b.wa_status) return res.json({ ok: true });
   if (r.wa_status === 'sem_telefone' || r.wa_status === 'nao') throw badRequest('Este contato não está na fila do WhatsApp.');
   await run('UPDATE campaign_recipients SET wa_status = ?, wa_at = ? WHERE id = ?', b.wa_status, b.wa_status === 'enviado' ? now() : null, r.id);
   if (b.wa_status === 'enviado' && r.wa_status !== 'enviado' && r.lead_id) {
@@ -273,4 +279,93 @@ engageRouter.delete('/campaigns/:id', async (req, res) => {
   await run('DELETE FROM campaigns WHERE id = ?', c.id);
   await audit(req, 'campaign.delete', { id: c.id });
   res.json({ ok: true });
+});
+
+/* ============================ Mensagens prontas (modelos) ============================ */
+engageRouter.get('/templates', async (req, res) => {
+  const u = req.user!;
+  const items = await all(
+    `SELECT t.id, t.title, t.body, t.shared, t.owner_id, u.name AS owner_name, t.updated_at FROM message_templates t LEFT JOIN users u ON u.id = t.owner_id
+     WHERE t.owner_id = ? OR t.shared = 1 ORDER BY t.shared DESC, t.title COLLATE NOCASE LIMIT 300`,
+    u.id,
+  );
+  res.json({ items, email_enabled: mailEnabled() });
+});
+
+const templateSchema = z.object({ title: zReqStr(60, 'Dê um nome ao modelo'), body: zReqStr(1500, 'Escreva a mensagem'), shared: z.boolean().optional() });
+async function loadTemplate(id: number, u: SessionUser) {
+  const t = await get<{ id: number; owner_id: number; shared: number }>('SELECT id, owner_id, shared FROM message_templates WHERE id = ?', id);
+  if (!t) throw notFound('Modelo não encontrado.');
+  if (t.owner_id !== u.id && !(u.role === 'admin' && t.shared)) throw forbidden('Só quem criou pode alterar este modelo.');
+  return t;
+}
+engageRouter.post('/templates', async (req, res) => {
+  const b = parse(templateSchema, req.body);
+  const t = now();
+  const { id } = await run(
+    'INSERT INTO message_templates (title, body, owner_id, shared, created_at, updated_at) VALUES (?,?,?,?,?,?)',
+    b.title, b.body, req.user!.id, req.user!.role === 'admin' && b.shared ? 1 : 0, t, t,
+  );
+  res.status(201).json({ id });
+});
+engageRouter.put('/templates/:id', async (req, res) => {
+  const tp = await loadTemplate(idParam(req.params.id), req.user!);
+  const b = parse(templateSchema, req.body);
+  await run('UPDATE message_templates SET title = ?, body = ?, shared = ?, updated_at = ? WHERE id = ?',
+    b.title, b.body, req.user!.role === 'admin' ? (b.shared ? 1 : 0) : tp.shared, now(), tp.id);
+  res.json({ ok: true });
+});
+engageRouter.delete('/templates/:id', async (req, res) => {
+  const tp = await loadTemplate(idParam(req.params.id), req.user!);
+  await run('DELETE FROM message_templates WHERE id = ?', tp.id);
+  res.json({ ok: true });
+});
+
+/* ============================ Mensagem individual para um lead ============================ */
+engageRouter.post('/leads/:id/message', async (req, res) => {
+  const u = req.user!;
+  const lead = await loadLead(idParam(req.params.id), u);
+  const b = parse(z.object({
+    channel: z.enum(['whatsapp', 'app', 'email']),
+    text: zReqStr(2000, 'Escreva a mensagem'),
+    subject: zStr(100).optional(),
+  }), req.body);
+  const t = now();
+  // Contato feito: conclui o follow-up que estava vencendo e tira o lead de "Novo"
+  const afterContact = async () => {
+    let followupDone = false;
+    if (lead.next_followup_at && lead.next_followup_at <= t + 12 * 3_600_000) {
+      await run('UPDATE leads SET next_followup_at = NULL, followup_note = NULL, followup_notified_at = NULL WHERE id = ?', lead.id);
+      followupDone = true;
+    }
+    if (lead.stage === 'novo') {
+      await run("UPDATE leads SET stage = 'contato' WHERE id = ?", lead.id);
+      await leadActivity(lead.id, u.id, 'etapa', 'Etapa alterada: Novo → Em contato');
+    }
+    return followupDone;
+  };
+  if (b.channel === 'whatsapp') {
+    // O envio acontece no WhatsApp do corretor; aqui só registramos no histórico
+    await leadActivity(lead.id, u.id, 'whatsapp', `Mensagem enviada pelo WhatsApp: "${b.text.slice(0, 300)}"`);
+    return res.status(201).json({ ok: true, followupDone: await afterContact() });
+  }
+  if (b.channel === 'app') {
+    if (!lead.user_id) throw badRequest('Este cliente não tem conta no app.');
+    // Entra no chat do app: o cliente recebe push e pode responder por lá
+    let conv = await get<{ id: number }>('SELECT id FROM conversations WHERE client_id = ? AND agent_id = ? ORDER BY last_message_at DESC LIMIT 1', lead.user_id, u.id);
+    if (!conv) conv = { id: (await run('INSERT INTO conversations (client_id, agent_id, property_id, created_at, last_message_at) VALUES (?,?,?,?,?)', lead.user_id, u.id, lead.property_id ?? null, t, t)).id };
+    await run('INSERT INTO messages (conversation_id, sender_id, body, created_at) VALUES (?,?,?,?)', conv.id, u.id, b.text, t);
+    await run('UPDATE conversations SET last_message_at = ? WHERE id = ?', t, conv.id);
+    await notify(lead.user_id, { type: 'mensagem', title: `Nova mensagem de ${u.name}`, body: b.text.slice(0, 120), link: `/mensagens/${conv.id}` });
+    await leadActivity(lead.id, u.id, 'nota', `Mensagem enviada no chat do app: "${b.text.slice(0, 300)}"`);
+    return res.status(201).json({ ok: true, conversation: conv.id, followupDone: await afterContact() });
+  }
+  if (!lead.email) throw badRequest('Este lead não tem e-mail cadastrado.');
+  if (!mailEnabled()) throw badRequest('O envio de e-mails ainda não está ativado no servidor.');
+  const subject = b.subject || `Mensagem de ${u.name.split(' ')[0]} — Walisson Imóveis`;
+  const html = emailLayout({ title: subject, body: b.text, footer: 'Você recebeu esta mensagem porque entrou em contato com a Walisson Imóveis. Para não receber mais, responda com a palavra SAIR.' });
+  const ok = await sendMail({ email: lead.email, name: lead.name }, subject, html, b.text);
+  if (!ok) throw badRequest('Não foi possível enviar o e-mail agora. Tente novamente.');
+  await leadActivity(lead.id, u.id, 'email', `E-mail enviado: "${subject}"`);
+  res.status(201).json({ ok: true, followupDone: await afterContact() });
 });

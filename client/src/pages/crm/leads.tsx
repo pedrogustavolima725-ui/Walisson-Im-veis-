@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   AlarmClock, CalendarPlus, CheckCircle2, Circle, Columns3, FileSignature, Flame, Heart, List, Mail, MessageCircle, Phone, PhoneCall, Plus, Search, Snowflake,
-  StickyNote, Sun, Trash2, Users,
+  Send, StickyNote, Sun, Trash2, Users,
 } from 'lucide-react';
 import { api, qs } from '../../lib/api';
 import { useApi, useDebounced } from '../../lib/hooks';
 import { brl, dateShort, dateTime, maskPhone, PAYMENT_LABEL, PROPOSAL_LABEL, relative, SOURCE_LABEL, STAGE_LABEL, STAGES, VISIT_LABEL, whatsappLink } from '../../lib/format';
 import { useAuth, useToast } from '../../context/app';
 import { Avatar, Badge, Button, Card, cx, Empty, ErrorBox, Field, Img, Input, Modal, PageHeader, PageLoader, Select, statusTone, Textarea } from '../../components/ui';
-import { FollowupCard } from './engage';
+import { FollowupCard, MessageComposer } from './engage';
 
 export type Lead = {
   id: number; name: string; email: string | null; phone: string | null; source: string; stage: string; temperature: string; interest: string; budget: number | null;
@@ -242,7 +242,7 @@ export function LeadDetail() {
   const agents = useApi<Agent[]>(user!.role === 'admin' ? '/crm/agents' : null);
   const [act, setAct] = useState({ type: 'nota', content: '' });
   const [task, setTask] = useState({ title: '', due: '' });
-  const [modal, setModal] = useState<null | 'visit' | 'proposal' | 'lost'>(null);
+  const [modal, setModal] = useState<null | 'visit' | 'proposal' | 'lost' | 'message'>(null);
 
   if (loading && !l) return <PageLoader />;
   if (error || !l) return <ErrorBox message={error ?? 'Lead não encontrado'} />;
@@ -293,6 +293,7 @@ export function LeadDetail() {
               {l.conversation ? <Link to={`/crm/mensagens/${l.conversation.id}`} className="flex flex-col items-center gap-1 rounded-2xl bg-surface-2 py-3 text-xs font-medium"><MessageCircle className="size-5 text-accent" />Chat</Link>
                 : <a href={l.email ? `mailto:${l.email}` : undefined} className={cx('flex flex-col items-center gap-1 rounded-2xl bg-surface-2 py-3 text-xs font-medium', !l.email && 'pointer-events-none opacity-40')}><Mail className="size-5 text-accent" />E-mail</a>}
             </div>
+            <Button className="mt-2 w-full" icon={<Send className="size-4" />} onClick={() => setModal('message')}>Enviar mensagem personalizada</Button>
             <dl className="mt-4 space-y-2.5 text-sm">
               <div className="flex justify-between gap-3"><dt className="text-muted">E-mail</dt><dd className="truncate">{l.email ?? '—'}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted">Telefone</dt><dd>{l.phone ?? '—'}</dd></div>
@@ -412,6 +413,7 @@ export function LeadDetail() {
         </div>
       </div>
 
+      <MessageComposer open={modal === 'message'} onClose={() => setModal(null)} lead={l} onSent={() => { setModal(null); reload(true); }} />
       <VisitModal open={modal === 'visit'} onClose={() => setModal(null)} lead={l} onDone={() => { setModal(null); reload(true); }} />
       <ProposalModal open={modal === 'proposal'} onClose={() => setModal(null)} lead={l} onDone={() => { setModal(null); reload(true); }} />
       <LostReason lead={modal === 'lost' ? l : null} onClose={() => setModal(null)} onConfirm={(r) => { patch({ stage: 'perdido', lost_reason: r }); setModal(null); }} />

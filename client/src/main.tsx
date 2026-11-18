@@ -100,6 +100,7 @@ const router = (DEMO ? createMemoryRouter : createBrowserRouter)([
           { path: 'leads/:id', element: lz(leads, 'LeadDetail') },
           { path: 'followups', element: lz(engage, 'Followups') },
           { path: 'disparos', element: lz(engage, 'Campaigns') },
+          { path: 'modelos', element: lz(engage, 'MessageTemplates') },
           { path: 'disparos/novo', element: lz(engage, 'CampaignNew') },
           { path: 'disparos/:id', element: lz(engage, 'CampaignDetail') },
           { path: 'imoveis', element: lz(crmProps, 'CrmProperties') },
