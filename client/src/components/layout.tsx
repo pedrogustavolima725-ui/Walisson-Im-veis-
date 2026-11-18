@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell, Building2, CalendarDays, ClipboardList, FileSignature, GitCompareArrows, Heart, Home, LayoutDashboard, LogOut, Menu,
-  MessageCircle, Moon, Search, ShieldCheck, Sun, User, Users, UsersRound, X, Calculator, Megaphone, BellRing, ArrowLeftRight,
+  MessageCircle, Moon, Search, ShieldCheck, Sun, User, Users, UsersRound, X, Calculator, Megaphone, BellRing, ArrowLeftRight, AlarmClock, Send,
 } from 'lucide-react';
 import { useAuth, useCompare, useCounts, useTheme, type Role } from '../context/app';
 import { Avatar, cx, PageLoader } from './ui';
@@ -216,6 +216,8 @@ export function CrmLayout() {
   const items: NavItem[] = [
     { to: '/crm', label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: '/crm/leads', label: 'Leads & Funil', icon: Users },
+    { to: '/crm/followups', label: 'Follow-ups', icon: AlarmClock },
+    { to: '/crm/disparos', label: 'Disparos', icon: Send },
     { to: '/crm/agenda', label: 'Agenda & Tarefas', icon: CalendarDays },
     { to: '/crm/imoveis', label: 'Imóveis', icon: Building2 },
     { to: '/crm/propostas', label: 'Propostas', icon: FileSignature },

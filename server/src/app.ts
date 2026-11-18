@@ -11,6 +11,7 @@ import { authRouter } from './routes/auth.ts';
 import { propertiesRouter } from './routes/properties.ts';
 import { agentsRouter, clientRouter } from './routes/client.ts';
 import { crmRouter } from './routes/crm.ts';
+import { engageRouter } from './routes/engage.ts';
 import { get, run, now } from './db.ts';
 
 export function createApp() {
@@ -60,6 +61,7 @@ export function createApp() {
   api.use('/agents', agentsRouter);
   api.use('/me', clientRouter);
   api.use('/crm', crmRouter);
+  api.use('/crm', engageRouter);
   api.use((_req, res) => res.status(404).json({ error: 'Rota não encontrada.' }));
   api.use(errorHandler);
   app.use('/api', api);

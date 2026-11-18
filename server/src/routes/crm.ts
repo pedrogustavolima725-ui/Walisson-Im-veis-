@@ -5,6 +5,7 @@ import { all, get, run, now, tx } from '../db.ts';
 import { requireRole, type SessionUser } from '../lib/auth.ts';
 import { hashPassword, passwordProblems } from '../lib/crypto.ts';
 import { audit, leadActivity, notify } from '../lib/events.ts';
+import { scheduleFirstContact } from '../lib/followup.ts';
 import { badRequest, forbidden, idParam, notFound, parse, zDocument, zBool, zEmail, zPhone, zReqStr, zStr } from '../lib/http.ts';
 
 export const crmRouter = Router();
@@ -42,7 +43,10 @@ crmRouter.get('/dashboard', async (req, res) => {
   const lost = await count(`SELECT COUNT(*) AS n FROM leads l WHERE ${s.sql} AND l.stage = 'perdido'`, ...s.params);
   const visitsUpcoming = await count(`SELECT COUNT(*) AS n FROM visits WHERE ${ps.sql} AND status IN ('agendada','confirmada') AND scheduled_at > ?`, ...ps.params, t);
   const activeListings = await count(`SELECT COUNT(*) AS n FROM properties WHERE ${ps.sql} AND status = 'disponivel'`, ...ps.params);
-  const pendingListings = count("SELECT COUNT(*) AS n FROM properties WHERE status = 'pendente'");
+  const pendingListings = await count("SELECT COUNT(*) AS n FROM properties WHERE status = 'pendente'");
+  const eod = Math.floor((t - 3 * 3_600_000) / 86_400_000) * 86_400_000 + 86_400_000 + 3 * 3_600_000; // fim do dia em Brasília
+  const followupsDue = await count(`SELECT COUNT(*) AS n FROM leads l WHERE ${s.sql} AND l.stage NOT IN ('ganho','perdido') AND l.next_followup_at IS NOT NULL AND l.next_followup_at < ?`, ...s.params, eod);
+  const followupsLate = await count(`SELECT COUNT(*) AS n FROM leads l WHERE ${s.sql} AND l.stage NOT IN ('ganho','perdido') AND l.next_followup_at IS NOT NULL AND l.next_followup_at < ?`, ...s.params, t);
   const vgv = (await get<{ v: number }>(`SELECT COALESCE(SUM(value),0) AS v FROM proposals WHERE ${ps.sql} AND status = 'aceita'`, ...ps.params))!.v;
   const vgvMonth = (await get<{ v: number }>(`SELECT COALESCE(SUM(value),0) AS v FROM proposals WHERE ${ps.sql} AND status = 'aceita' AND updated_at >= ?`, ...ps.params, +monthStart))!.v;
   const pipelineValue = (await get<{ v: number }>(`SELECT COALESCE(SUM(value),0) AS v FROM proposals WHERE ${ps.sql} AND status IN ('enviada','contraproposta')`, ...ps.params))!.v;
@@ -102,7 +106,7 @@ crmRouter.get('/dashboard', async (req, res) => {
 
   res.json({
     kpis: {
-      leadsMonth, leadsPrev, openLeads, visitsUpcoming, activeListings, pendingListings, vgv, vgvMonth, pipelineValue,
+      leadsMonth, leadsPrev, openLeads, visitsUpcoming, activeListings, pendingListings, followupsDue, followupsLate, vgv, vgvMonth, pipelineValue,
       conversion: won + lost ? Math.round((won / (won + lost)) * 1000) / 10 : 0,
       commission: Math.round(vgvMonth * config.commissionRate) / 100,
       commissionRate: config.commissionRate,
@@ -176,6 +180,7 @@ crmRouter.post('/leads', async (req, res) => {
     b.name, b.email || null, b.phone || null, b.source, b.stage, b.temperature, b.interest, b.budget ?? null, b.message ?? null, b.property_id ?? null, agentId, t, t,
   );
   await leadActivity(id, req.user!.id, 'sistema', `Lead cadastrado manualmente por ${req.user!.name}`);
+  await scheduleFirstContact(id);
   if (agentId !== req.user!.id) await notify(agentId, { type: 'lead', title: 'Lead atribuído a você', body: b.name, link: `/crm/leads/${id}` });
   await audit(req, 'lead.create', { id });
   res.status(201).json({ id });
@@ -223,11 +228,17 @@ crmRouter.post('/leads/:id/activities', async (req, res) => {
   const lead = await loadLead(idParam(req.params.id), req.user!);
   const b = parse(z.object({ type: z.enum(['nota', 'ligacao', 'email', 'whatsapp', 'reuniao']), content: zReqStr(2000, 'Escreva algo') }), req.body);
   await leadActivity(lead.id, req.user!.id, b.type, b.content);
+  // Falou com o cliente: o follow-up que vencia até agora (ou nas próximas 12h) está feito
+  let followupDone = false;
+  if (b.type !== 'nota' && lead.next_followup_at && lead.next_followup_at <= now() + 12 * 3_600_000) {
+    await run('UPDATE leads SET next_followup_at = NULL, followup_note = NULL, followup_notified_at = NULL WHERE id = ?', lead.id);
+    followupDone = true;
+  }
   if (lead.stage === 'novo' && b.type !== 'nota') {
     await run("UPDATE leads SET stage = 'contato' WHERE id = ?", lead.id);
     await leadActivity(lead.id, req.user!.id, 'etapa', 'Etapa alterada: Novo → Em contato');
   }
-  res.status(201).json({ ok: true });
+  res.status(201).json({ ok: true, followupDone });
 });
 
 /* ====================== Tarefas ====================== */

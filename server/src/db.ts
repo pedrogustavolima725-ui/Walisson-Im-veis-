@@ -141,6 +141,32 @@ CREATE TABLE IF NOT EXISTS leads (
 );
 CREATE INDEX IF NOT EXISTS idx_leads_agent ON leads(agent_id, stage);
 
+CREATE TABLE IF NOT EXISTS campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  channels TEXT NOT NULL,
+  audience TEXT NOT NULL,
+  filters TEXT,
+  property_id INTEGER REFERENCES properties(id) ON DELETE SET NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS campaign_recipients (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  lead_id INTEGER REFERENCES leads(id) ON DELETE SET NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  phone TEXT,
+  email TEXT,
+  text TEXT NOT NULL,
+  wa_status TEXT NOT NULL DEFAULT 'pendente',
+  wa_at INTEGER,
+  app_status TEXT NOT NULL DEFAULT 'nao',
+  email_status TEXT NOT NULL DEFAULT 'nao'
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_recipients ON campaign_recipients(campaign_id);
 CREATE TABLE IF NOT EXISTS lead_activities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
@@ -273,6 +299,11 @@ export const ready = (async () => {
     'ALTER TABLE users ADD COLUMN document TEXT', // CPF ou CNPJ (só dígitos), visível apenas para a equipe
     'ALTER TABLE properties ADD COLUMN review_note TEXT', // motivo da reprovação de imóvel enviado por proprietário
     'ALTER TABLE properties ADD COLUMN reviewed_at INTEGER',
+    // Follow-up: próximo contato agendado com o lead e lembrete ao corretor
+    'ALTER TABLE leads ADD COLUMN next_followup_at INTEGER',
+    'ALTER TABLE leads ADD COLUMN followup_note TEXT',
+    'ALTER TABLE leads ADD COLUMN followup_notified_at INTEGER',
+    'ALTER TABLE leads ADD COLUMN opt_out INTEGER NOT NULL DEFAULT 0', // não quer receber disparos
   ]) {
     try { await client.execute(sql); } catch (e) { if (!/duplicate column/i.test(String((e as Error).message))) throw e; }
   }

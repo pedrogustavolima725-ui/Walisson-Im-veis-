@@ -4,6 +4,7 @@ import { clientIp } from './auth.ts';
 import { config } from '../config.ts';
 import { emailLayout, sendMail } from './mailer.ts';
 import { sendPush } from './push.ts';
+import { scheduleFirstContact } from './followup.ts';
 
 export async function audit(req: Request | null, action: string, meta: Record<string, unknown> = {}, userId?: number | null) {
   await run(
@@ -96,6 +97,7 @@ export async function upsertLeadForClient(opts: {
       opts.propertyId ?? null, agentId, opts.userId ?? null, t, t,
     );
     lead = { id: r.id, agent_id: agentId, stage: 'novo' };
+    await scheduleFirstContact(r.id);
     await leadActivity(lead.id, null, 'sistema', `Lead criado via ${opts.source}`);
     await notify(agentId, { type: 'lead', title: 'Novo lead recebido', body: `${opts.name}${property ? ` — ${property.title}` : ''}`, link: `/crm/leads/${lead.id}` });
   } else if (opts.propertyId) {

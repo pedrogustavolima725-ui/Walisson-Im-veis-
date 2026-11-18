@@ -3,6 +3,7 @@ import { createApp } from './app.ts';
 import { get, isRemoteDb, ready } from './db.ts';
 import { bootstrap } from './bootstrap.ts';
 import { seed } from './seed.ts';
+import { startFollowupReminders } from './lib/followup.ts';
 
 await ready;
 console.log(`  Banco de dados: ${isRemoteDb ? 'Turso (nuvem)' : 'arquivo local'}`);
@@ -16,6 +17,7 @@ createApp().listen(config.port, () => {
   console.log(`\n  Walisson Imóveis API rodando em http://localhost:${config.port}`);
   if (!config.isProd) console.log('  Front-end (dev): http://localhost:5173\n');
   keepAwake();
+  startFollowupReminders();
 });
 
 /**

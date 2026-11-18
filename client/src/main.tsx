@@ -17,6 +17,7 @@ const client = () => import('./pages/client');
 const account = () => import('./pages/account');
 const crm = () => import('./pages/crm/dashboard');
 const leads = () => import('./pages/crm/leads');
+const engage = () => import('./pages/crm/engage');
 const crmProps = () => import('./pages/crm/properties');
 const crmOps = () => import('./pages/crm/operations');
 const crmAdmin = () => import('./pages/crm/admin');
@@ -97,6 +98,10 @@ const router = (DEMO ? createMemoryRouter : createBrowserRouter)([
           { index: true, element: lz(crm, 'Dashboard') },
           { path: 'leads', element: lz(leads, 'Leads') },
           { path: 'leads/:id', element: lz(leads, 'LeadDetail') },
+          { path: 'followups', element: lz(engage, 'Followups') },
+          { path: 'disparos', element: lz(engage, 'Campaigns') },
+          { path: 'disparos/novo', element: lz(engage, 'CampaignNew') },
+          { path: 'disparos/:id', element: lz(engage, 'CampaignDetail') },
           { path: 'imoveis', element: lz(crmProps, 'CrmProperties') },
           { path: 'imoveis/novo', element: lz(crmProps, 'PropertyForm') },
           { path: 'imoveis/:id', element: lz(crmProps, 'PropertyForm') },

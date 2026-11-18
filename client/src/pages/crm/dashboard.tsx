@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Building2, CalendarDays, CheckCircle2, Circle, Download, Eye, Flame, Heart, Plus, Target, TrendingUp, Users, Wallet } from 'lucide-react';
+import { AlarmClock, AlertTriangle, ArrowDownRight, ArrowUpRight, Building2, CalendarDays, CheckCircle2, Circle, Download, Eye, Flame, Heart, Plus, Target, TrendingUp, Users, Wallet } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useApi } from '../../lib/hooks';
 import { brl, cap, dateTime, relative, SOURCE_LABEL, STAGE_LABEL } from '../../lib/format';
@@ -9,7 +9,7 @@ import { Avatar, Badge, Button, Card, cx, ErrorBox, Img, PageLoader, statusTone,
 import { AreaChart, HBars, Spark } from '../../components/charts';
 
 type Dash = {
-  kpis: { leadsMonth: number; leadsPrev: number; openLeads: number; visitsUpcoming: number; activeListings: number; pendingListings: number; vgv: number; vgvMonth: number; pipelineValue: number; conversion: number; commission: number; commissionRate: number };
+  kpis: { leadsMonth: number; leadsPrev: number; openLeads: number; visitsUpcoming: number; activeListings: number; pendingListings: number; followupsDue: number; followupsLate: number; vgv: number; vgvMonth: number; pipelineValue: number; conversion: number; commission: number; commissionRate: number };
   funnel: { stage: string; label: string; count: number }[];
   sources: { source: string; n: number }[];
   months: { label: string; leads: number; vgv: number; visits: number }[];
@@ -62,6 +62,14 @@ export function Dashboard() {
           <AlertTriangle className="size-5 shrink-0 text-warning" />
           <span className="flex-1"><b>{k.pendingListings} imóvel(is)</b> enviado(s) por proprietários aguardando avaliação.</span>
           <span className="font-semibold text-warning">Revisar →</span>
+        </Link>
+      )}
+
+      {k.followupsDue > 0 && (
+        <Link to="/crm/followups" className={cx('flex items-center gap-3 rounded-2xl border p-4 text-sm', k.followupsLate ? 'border-danger/30 bg-danger-soft' : 'border-accent/30 bg-accent-soft')}>
+          <AlarmClock className={cx('size-5 shrink-0', k.followupsLate ? 'text-danger' : 'text-accent')} />
+          <span className="flex-1"><b>{k.followupsDue} follow-up{k.followupsDue > 1 ? 's' : ''}</b> para hoje{k.followupsLate ? ` (${k.followupsLate} atrasado${k.followupsLate > 1 ? 's' : ''})` : ''}.</span>
+          <span className={cx('font-semibold', k.followupsLate ? 'text-danger' : 'text-accent')}>Ver →</span>
         </Link>
       )}
 

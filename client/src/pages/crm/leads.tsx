@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  CalendarPlus, CheckCircle2, Circle, Columns3, FileSignature, Flame, Heart, List, Mail, MessageCircle, Phone, PhoneCall, Plus, Search, Snowflake,
+  AlarmClock, CalendarPlus, CheckCircle2, Circle, Columns3, FileSignature, Flame, Heart, List, Mail, MessageCircle, Phone, PhoneCall, Plus, Search, Snowflake,
   StickyNote, Sun, Trash2, Users,
 } from 'lucide-react';
 import { api, qs } from '../../lib/api';
@@ -9,10 +9,12 @@ import { useApi, useDebounced } from '../../lib/hooks';
 import { brl, dateShort, dateTime, maskPhone, PAYMENT_LABEL, PROPOSAL_LABEL, relative, SOURCE_LABEL, STAGE_LABEL, STAGES, VISIT_LABEL, whatsappLink } from '../../lib/format';
 import { useAuth, useToast } from '../../context/app';
 import { Avatar, Badge, Button, Card, cx, Empty, ErrorBox, Field, Img, Input, Modal, PageHeader, PageLoader, Select, statusTone, Textarea } from '../../components/ui';
+import { FollowupCard } from './engage';
 
 export type Lead = {
   id: number; name: string; email: string | null; phone: string | null; source: string; stage: string; temperature: string; interest: string; budget: number | null;
   message: string | null; property_id: number | null; agent_id: number | null; user_id: number | null; lost_reason: string | null; created_at: number; updated_at: number;
+  next_followup_at?: number | null; followup_note?: string | null; opt_out?: number;
   agent_name?: string | null; property_title?: string | null; property_code?: string | null; property_cover?: string | null; open_tasks?: number; last_activity?: number | null;
 };
 type Agent = { id: number; name: string; avatar: string | null; role: string };
@@ -133,6 +135,7 @@ export function Leads() {
                       <span>{relative(l.updated_at)}</span>
                     </div>
                     {user!.role === 'admin' && l.agent_name && <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-muted"><Avatar name={l.agent_name} size={16} />{l.agent_name}</p>}
+                    {l.next_followup_at && !['ganho', 'perdido'].includes(l.stage) && <p className={cx('mt-1.5 flex items-center gap-1 text-[11px]', l.next_followup_at < Date.now() ? 'font-semibold text-danger' : 'text-muted')}><AlarmClock className="size-3" />{l.next_followup_at < Date.now() ? 'Follow-up atrasado' : `Follow-up ${relative(l.next_followup_at)}`}</p>}
                   </div>
                 ))}
               </div>
@@ -249,7 +252,11 @@ export function LeadDetail() {
   };
   const addActivity = async () => {
     if (!act.content.trim()) return;
-    try { await api(`/crm/leads/${l.id}/activities`, { body: act }); setAct({ ...act, content: '' }); reload(true); } catch (e: any) { toast(e.message, 'error'); }
+    try {
+      const r = await api<{ followupDone?: boolean }>(`/crm/leads/${l.id}/activities`, { body: act });
+      setAct({ ...act, content: '' }); reload(true);
+      if (r.followupDone) toast('Follow-up concluído. Marque o próximo contato no cartão Follow-up.', 'info');
+    } catch (e: any) { toast(e.message, 'error'); }
   };
   const addTask = async () => {
     if (!task.title.trim()) return;
@@ -303,6 +310,8 @@ export function LeadDetail() {
             </dl>
             {l.message && <p className="mt-4 rounded-2xl bg-surface-2 p-3 text-sm text-muted">“{l.message}”</p>}
           </Card>
+
+          <FollowupCard lead={l} onChange={() => reload(true)} />
 
           {l.property && (
             <Card className="p-3">
