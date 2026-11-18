@@ -233,7 +233,7 @@ export function Register() {
   const nav = useNavigate();
   const loc = useLocation();
   const toast = useToast();
-  const [f, setF] = useState({ name: '', email: '', phone: '', password: '', confirm: '', acceptTerms: false, marketing: false });
+  const [f, setF] = useState({ firstName: '', lastName: '', email: '', phone: '', password: '', confirm: '', acceptTerms: false, marketing: false });
   const [err, setErr] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -244,16 +244,32 @@ export function Register() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setErr(null); setFields({});
-    if (f.password !== f.confirm) return setFields({ confirm: 'As senhas não conferem' });
+    const miss: Record<string, string> = {};
+    if (f.firstName.trim().length < 2) miss.firstName = 'Informe seu nome';
+    if (f.lastName.trim().length < 2) miss.lastName = 'Informe seu sobrenome';
+    if (!f.email.trim()) miss.email = 'Informe seu e-mail';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) miss.email = 'E-mail inválido';
+    const digits = f.phone.replace(/\D/g, '');
+    if (!digits) miss.phone = 'Informe seu celular com DDD';
+    else if (digits.length < 10) miss.phone = 'Celular incompleto — use DDD + número';
+    if (f.password !== f.confirm) miss.confirm = 'As senhas não conferem';
+    if (Object.keys(miss).length) {
+      setFields(miss);
+      document.querySelector(`[data-field="${Object.keys(miss)[0]}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     setLoading(true);
     try {
-      const r = await api('/auth/register', { body: { name: f.name, email: f.email, phone: f.phone, password: f.password, acceptTerms: f.acceptTerms, marketing: f.marketing } });
+      const name = `${f.firstName.trim()} ${f.lastName.trim()}`;
+      const r = await api('/auth/register', { body: { name, email: f.email, phone: f.phone, password: f.password, acceptTerms: f.acceptTerms, marketing: f.marketing } });
       setSession(r.user, r.csrfToken);
       toast('Conta criada com sucesso!');
       nav((loc.state as any)?.from ?? '/', { replace: true });
     } catch (e) {
       const ae = e as ApiError;
-      setErr(ae.message); setFields(ae.fields ?? {});
+      const fl = { ...(ae.fields ?? {}) };
+      if (fl.name) { fl.lastName = fl.name; delete fl.name; }
+      setErr(ae.message); setFields(fl);
     } finally { setLoading(false); }
   };
 
@@ -261,9 +277,12 @@ export function Register() {
     <AuthShell title="Criar sua conta" subtitle="Leva menos de um minuto." image={HERO_3}>
       <form onSubmit={submit} className="space-y-4" noValidate>
         <FormError msg={err} />
-        <Field label="Nome completo" error={fields.name}><Input autoComplete="name" value={f.name} onChange={set('name')} placeholder="Seu nome" icon={<UserIcon className="size-4" />} invalid={!!fields.name} /></Field>
-        <Field label="E-mail" error={fields.email}><Input type="email" autoComplete="email" value={f.email} onChange={set('email')} placeholder="voce@email.com" icon={<Mail className="size-4" />} invalid={!!fields.email} /></Field>
-        <Field label="Celular (opcional)" error={fields.phone}><Input type="tel" autoComplete="tel" value={f.phone} onChange={set('phone')} placeholder="(00) 00000-0000" icon={<Phone className="size-4" />} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <div data-field="firstName"><Field label="Nome" error={fields.firstName}><Input autoComplete="given-name" autoCapitalize="words" value={f.firstName} onChange={set('firstName')} placeholder="Maria" icon={<UserIcon className="size-4" />} invalid={!!fields.firstName} maxLength={50} /></Field></div>
+          <div data-field="lastName"><Field label="Sobrenome" error={fields.lastName}><Input autoComplete="family-name" autoCapitalize="words" value={f.lastName} onChange={set('lastName')} placeholder="Silva" invalid={!!fields.lastName} maxLength={50} /></Field></div>
+        </div>
+        <div data-field="email"><Field label="E-mail (Gmail ou outro)" error={fields.email}><Input type="email" autoComplete="email" inputMode="email" value={f.email} onChange={set('email')} placeholder="seunome@gmail.com" icon={<Mail className="size-4" />} invalid={!!fields.email} /></Field></div>
+        <div data-field="phone"><Field label="Celular / WhatsApp" error={fields.phone}><Input type="tel" autoComplete="tel" inputMode="tel" value={f.phone} onChange={set('phone')} placeholder="(34) 99999-0000" icon={<Phone className="size-4" />} invalid={!!fields.phone} /></Field></div>
         <Field label="Senha" error={fields.password}>
           <PasswordInput autoComplete="new-password" value={f.password} onChange={set('password')} placeholder="Crie uma senha forte" invalid={!!fields.password} />
           <PasswordMeter value={f.password} />

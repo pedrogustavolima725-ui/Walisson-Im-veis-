@@ -4,7 +4,7 @@ import { all, get, run, now, tx } from '../db.ts';
 import { isStaff, requireAuth, USER_PUBLIC_COLS } from '../lib/auth.ts';
 import { verifyPassword } from '../lib/crypto.ts';
 import { audit, leadActivity, notify, upsertLeadForClient } from '../lib/events.ts';
-import { badRequest, forbidden, idParam, notFound, parse, zDocument, zPhone, zReqStr, zStr } from '../lib/http.ts';
+import { badRequest, forbidden, idParam, notFound, parse, zDocument, zFullName, zMobile, zPhone, zReqStr, zStr } from '../lib/http.ts';
 import { withExtras } from './properties.ts';
 import { mailEnabled } from '../lib/mailer.ts';
 import { pushEnabled } from '../lib/push.ts';
@@ -322,6 +322,10 @@ clientRouter.put('/profile', async (req, res) => {
     }),
     req.body,
   );
+  if (req.user!.role === 'cliente') {
+    const c = parse(z.object({ name: zFullName, phone: z.string({ message: 'Informe seu celular com DDD' }).pipe(zMobile) }), req.body);
+    b.name = c.name; b.phone = c.phone;
+  }
   await run(
     'UPDATE users SET name = ?, phone = ?, bio = COALESCE(?, bio), document = COALESCE(?, document), avatar = COALESCE(?, avatar), marketing_opt_in = COALESCE(?, marketing_opt_in), updated_at = ? WHERE id = ?',
     b.name, b.phone || null, b.bio ?? null, isStaff(req.user) ? (b.document ?? null) : null, b.avatar ?? null, b.marketing === undefined ? null : b.marketing ? 1 : 0, now(), req.user!.id,

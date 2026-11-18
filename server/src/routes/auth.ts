@@ -11,7 +11,7 @@ import {
 import { createSession, destroySession, requireAuth, USER_PUBLIC_COLS } from '../lib/auth.ts';
 import { audit, notify } from '../lib/events.ts';
 import { emailLayout, sendMail } from '../lib/mailer.ts';
-import { badRequest, parse, unauthorized, zEmail, zPhone, zReqStr, HttpError } from '../lib/http.ts';
+import { badRequest, parse, unauthorized, zEmail, zFullName, zMobile, HttpError } from '../lib/http.ts';
 
 export const authRouter = Router();
 
@@ -47,9 +47,9 @@ authRouter.get('/me', async (req, res) => {
 authRouter.post('/register', signupLimiter, async (req, res) => {
   const base = parse(
     z.object({
-      name: zReqStr(100, 'Informe seu nome').refine((v) => v.length >= 3, 'Nome muito curto'),
-      email: zEmail,
-      phone: zPhone.optional().or(z.literal('')),
+      name: zFullName,
+      email: z.string({ message: 'Informe seu e-mail' }).trim().min(1, 'Informe seu e-mail').pipe(zEmail),
+      phone: z.string({ message: 'Informe seu celular com DDD' }).pipe(zMobile),
       password: z.string(),
       acceptTerms: z.literal(true, { message: 'É necessário aceitar os termos e a política de privacidade' }),
       marketing: z.boolean().optional(),

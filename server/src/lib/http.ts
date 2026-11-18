@@ -57,6 +57,21 @@ export const zPhone = z
   .trim()
   .max(20)
   .regex(/^[\d\s()+-]{8,20}$/, 'Telefone inválido');
+/** Nome e sobrenome: pelo menos duas palavras com 2+ letras. */
+const tidyName = (v: string) => v.trim().replace(/\s+/g, ' ');
+export const zFullName = z
+  .string()
+  .transform(tidyName)
+  .pipe(z.string().min(1, 'Informe seu nome e sobrenome').max(100, 'Nome muito longo'))
+  .refine((v) => v.split(' ').filter((w) => /\p{L}{2,}/u.test(w)).length >= 2, 'Informe nome e sobrenome');
+/** Celular brasileiro com DDD (10 ou 11 dígitos), guardado formatado. */
+export const zMobile = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/\D/g, '').replace(/^55(?=\d{10,11}$)/, ''))
+  .refine((d) => d.length > 0, 'Informe seu celular com DDD')
+  .refine((d) => /^[1-9]{2}9?\d{8}$/.test(d), 'Celular inválido — use DDD + número, ex.: (34) 99999-0000')
+  .transform((d) => (d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`));
 export const zBool = z.union([z.boolean(), z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')]).transform((v) => v === true || v === 'true' || v === '1');
 
 /* CPF / CNPJ: aceita com ou sem pontuação, valida os dígitos verificadores e guarda só os números */

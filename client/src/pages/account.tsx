@@ -79,7 +79,7 @@ export function Profile() {
         <Card className="h-fit p-5 md:p-6">
           <h3 className="mb-4 font-semibold">Dados pessoais</h3>
           <div className="space-y-4">
-            <Field label="Nome completo" error={fields.name}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoComplete="name" /></Field>
+            <Field label="Nome e sobrenome" error={fields.name}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoComplete="name" /></Field>
             <Field label="E-mail" hint="Para alterar o e-mail, fale com o suporte (verificação de identidade)."><Input value={user!.email} disabled /></Field>
             <Field label="Celular / WhatsApp" error={fields.phone}><Input type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: maskPhone(e.target.value) })} autoComplete="tel" /></Field>
             {isStaff && (

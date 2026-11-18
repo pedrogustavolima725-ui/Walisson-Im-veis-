@@ -48,20 +48,30 @@ after(() => server.close());
 
 test('cadastro rejeita senha fraca e exige aceite dos termos', async () => {
   const c = new Client();
-  let r = await c.req('/auth/register', { body: { name: 'Teste Fraco', email: 'fraco@x.com', password: '12345678', acceptTerms: true } });
+  let r = await c.req('/auth/register', { body: { name: 'Teste Fraco', email: 'fraco@x.com', phone: '(11) 98888-0000', password: '12345678', acceptTerms: true } });
   assert.equal(r.status, 400);
   assert.match(r.body.fields.password, /maiúscula/);
-  r = await c.req('/auth/register', { body: { name: 'Teste', email: 'termos@x.com', password: 'SenhaForte123', acceptTerms: false } });
+  r = await c.req('/auth/register', { body: { name: 'Teste', email: 'termos@x.com', phone: '(11) 98888-0000', password: 'SenhaForte123', acceptTerms: false } });
   assert.equal(r.status, 400);
-  r = await c.req('/auth/register', { body: { name: 'Teste Forte', email: 'novo.usuario@x.com', password: 'SenhaForte123', acceptTerms: true } });
+  // Nome e sobrenome, e-mail e celular com DDD são obrigatórios
+  r = await c.req('/auth/register', { body: { name: 'Maria', email: 'so.nome@x.com', password: 'SenhaForte123', acceptTerms: true } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.fields.name, /sobrenome/);
+  assert.match(r.body.fields.phone, /celular/i);
+  r = await c.req('/auth/register', { body: { name: 'Maria Silva', phone: '9999-0000', password: 'SenhaForte123', acceptTerms: true } });
+  assert.equal(r.status, 400);
+  assert.ok(r.body.fields.email);
+  assert.match(r.body.fields.phone, /DDD/);
+  r = await c.req('/auth/register', { body: { name: 'Teste Forte', email: 'novo.usuario@x.com', phone: '(11) 98888-0000', password: 'SenhaForte123', acceptTerms: true } });
   assert.equal(r.status, 201);
   assert.equal(r.body.user.role, 'cliente');
+  assert.equal(r.body.user.phone, '(11) 98888-0000');
   assert.equal(r.body.user.password_hash, undefined, 'hash nunca deve ser exposto');
 });
 
 test('cadastro não permite escolher papel (escalada de privilégio)', async () => {
   const c = new Client();
-  const r = await c.req('/auth/register', { body: { name: 'Hacker', email: 'h@x.com', password: 'SenhaForte123', acceptTerms: true, role: 'admin' } });
+  const r = await c.req('/auth/register', { body: { name: 'Hacker Teste', email: 'h@x.com', phone: '(11) 98888-0000', password: 'SenhaForte123', acceptTerms: true, role: 'admin' } });
   assert.equal(r.status, 201);
   assert.equal(r.body.user.role, 'cliente');
 });
@@ -124,7 +134,7 @@ test('endereço exato do imóvel não é exposto ao público', async () => {
 
 test('2FA (TOTP) obrigatório no login após ativação', async () => {
   const c = new Client();
-  await c.req('/auth/register', { body: { name: 'Dois Fatores', email: '2fa@x.com', password: 'SenhaForte123', acceptTerms: true } });
+  await c.req('/auth/register', { body: { name: 'Dois Fatores', email: '2fa@x.com', phone: '(11) 98888-0000', password: 'SenhaForte123', acceptTerms: true } });
   const setup = await c.req('/auth/2fa/setup', { body: {} });
   const secret: string = setup.body.secret;
   assert.ok(base32Decode(secret).length === 20);
@@ -200,7 +210,7 @@ test('exportação CSV neutraliza injeção de fórmulas', async () => {
 
 test('fluxo de negócio: visita gera lead e proposta aceita fecha o negócio', async () => {
   const cli = new Client();
-  await cli.req('/auth/register', { body: { name: 'Comprador Teste', email: 'comprador@x.com', password: 'SenhaForte123', acceptTerms: true } });
+  await cli.req('/auth/register', { body: { name: 'Comprador Teste', email: 'comprador@x.com', phone: '(11) 98888-0000', password: 'SenhaForte123', acceptTerms: true } });
   const when = new Date(Date.now() + 3 * 86400_000);
   when.setHours(10, 0, 0, 0);
   const v = await cli.req('/me/visits', { body: { propertyId: 7, scheduledAt: +when } });
@@ -221,7 +231,7 @@ test('fluxo de negócio: visita gera lead e proposta aceita fecha o negócio', a
 
 test('LGPD: exportação e exclusão de conta', async () => {
   const c = new Client();
-  await c.req('/auth/register', { body: { name: 'Titular LGPD', email: 'lgpd@x.com', password: 'SenhaForte123', acceptTerms: true } });
+  await c.req('/auth/register', { body: { name: 'Titular LGPD', email: 'lgpd@x.com', phone: '(11) 98888-0000', password: 'SenhaForte123', acceptTerms: true } });
   const exp = await c.req('/me/account/export');
   assert.equal(exp.body.profile.email, 'lgpd@x.com');
   assert.equal((await c.req('/me/account/delete', { body: { password: 'SenhaForte123', confirm: 'EXCLUIR' } })).status, 200);
@@ -253,7 +263,7 @@ test('CPF/CNPJ: validado e nunca exposto ao público', async () => {
 
 test('imóvel enviado por cliente: aprovar e reprovar', async () => {
   const dono = new Client();
-  await dono.req('/auth/register', { body: { name: 'Dono do Imovel', email: 'dono.imovel@x.com', password: 'SenhaForte2026', acceptTerms: true } });
+  await dono.req('/auth/register', { body: { name: 'Dono do Imovel', email: 'dono.imovel@x.com', phone: '(11) 98888-0000', password: 'SenhaForte2026', acceptTerms: true } });
   const enviar = (title: string) => dono.req('/properties/submit', { body: { title, purpose: 'venda', type: 'casa', price: 350000, city: 'Brasília', state: 'DF', bedrooms: 2, bathrooms: 1, parking: 1, area: 80 } });
   const a = await enviar('Casa enviada para aprovar');
   const r = await enviar('Casa enviada para reprovar');

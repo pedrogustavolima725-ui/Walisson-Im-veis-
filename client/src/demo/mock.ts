@@ -122,6 +122,7 @@ function handleMutation(method: string, path: string, body: Any): Any {
     return login(rl);
   }
   if (path === '/auth/register') {
+    if (String(body.phone ?? '').replace(/\D/g, '').length < 10) throw new ApiError(400, 'Verifique os campos destacados.', { phone: 'Informe seu celular com DDD' });
     if (!body.acceptTerms) throw new ApiError(400, 'Verifique os campos destacados.', { acceptTerms: 'É necessário aceitar os termos e a política de privacidade' });
     return login('cliente', { name: body.name || 'Novo cliente', email: body.email, phone: body.phone || null });
   }
