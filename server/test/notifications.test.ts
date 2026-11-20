@@ -120,3 +120,33 @@ test('esqueci a senha envia e-mail com o link', async () => {
   assert.ok(mail);
   assert.match(JSON.parse(String(mail!.init.body)).htmlContent, /redefinir-senha\?token=/);
 });
+
+test('enviar para todos: notificação chega no celular de todos (push) e no sino', async () => {
+  const uid = (await get<{ id: number }>("SELECT id FROM users WHERE email = 'corretora@exemplo.com'"))!.id;
+  await run("UPDATE users SET role = 'admin' WHERE id = ?", uid);
+  await req('/me/notification-settings', { email: false, push: true }, 'PUT');
+  const t = now();
+  const h = await hashPassword('SenhaForte2026');
+  const c1 = (await run("INSERT INTO users (name, email, password_hash, role, created_at, updated_at) VALUES ('Cliente Um','um@exemplo.com',?, 'cliente', ?, ?)", h, t, t)).id;
+  const c2 = (await run("INSERT INTO users (name, email, password_hash, role, notify_push, created_at, updated_at) VALUES ('Cliente Dois','dois@exemplo.com',?, 'cliente', 0, ?, ?)", h, t, t)).id;
+  await run('INSERT INTO push_tokens (user_id, token, platform, created_at, last_seen_at) VALUES (?,?,?,?,?)', c1, 'token-cliente-um-bbbbbbbbbbbbbbbbbb', 'android', t, t);
+  await run('INSERT INTO push_tokens (user_id, token, platform, created_at, last_seen_at) VALUES (?,?,?,?,?)', c2, 'token-cliente-dois-cccccccccccccccc', 'android', t, t);
+
+  const p = await req('/crm/campaigns/preview', { audience: 'todos' });
+  assert.equal(p.status, 200);
+  assert.equal(p.body.total, 3);
+  assert.equal(p.body.devices, 2); // admin e Cliente Um; Cliente Dois desligou o push
+
+  calls.length = 0;
+  const r = await req('/crm/campaigns', { audience: 'todos', title: 'Plantão sábado', message: 'Oi {nome}, venha no plantão!', channels: ['app'] });
+  assert.equal(r.status, 201);
+  await settle();
+  const pushes = calls.filter((c) => c.url.includes('fcm.googleapis.com')).map((c) => JSON.parse(String(c.init.body)).message);
+  assert.deepEqual(pushes.map((m) => m.token).sort(), ['token-cliente-um-bbbbbbbbbbbbbbbbbb', 'token-do-celular-aaaaaaaaaaaaaaaaaa']);
+  const um = pushes.find((m) => m.token.startsWith('token-cliente-um'));
+  assert.equal(um.data.title, 'Plantão sábado');
+  assert.equal(um.data.body, 'Oi Cliente, venha no plantão!');
+  assert.equal(um.data.link, '/notificacoes');
+  // Todos veem no sino, inclusive quem desligou o push
+  for (const id of [uid, c1, c2]) assert.ok(await get("SELECT 1 FROM notifications WHERE user_id = ? AND type = 'campanha' AND title = 'Plantão sábado'", id));
+});

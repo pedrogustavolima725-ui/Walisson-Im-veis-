@@ -107,6 +107,8 @@ test('disparo: filtros, opt-out, personalização, aviso no app e fila do WhatsA
   assert.equal(p.body.app, 1);
   // Corretor não dispara para toda a base de clientes
   assert.equal((await req(ana, '/crm/campaigns/preview', { audience: 'clientes' })).status, 403);
+  assert.equal((await req(ana, '/crm/campaigns/preview', { audience: 'todos' })).status, 403);
+  assert.equal((await req(ana, '/crm/campaigns', { audience: 'equipe', title: 'x', message: 'y', channels: ['app'] })).status, 403);
   // Beto não enxerga os leads da Ana
   assert.equal((await req(beto, '/crm/campaigns/preview', audience)).body.total, 0);
 

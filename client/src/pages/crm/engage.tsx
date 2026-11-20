@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlarmClock, Bell, Pencil, CheckCircle2, ChevronRight, Clock, Mail, MessageCircle, Phone, Plus, Send, SkipForward, Smartphone, Snowflake, Trash2, Undo2 } from 'lucide-react';
+import { AlarmClock, Bell, Megaphone, Pencil, CheckCircle2, ChevronRight, Clock, Mail, MessageCircle, Phone, Plus, Send, SkipForward, Smartphone, Snowflake, Trash2, Undo2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useApi, useDebounced } from '../../lib/hooks';
 import { dateTime, relative, SOURCE_LABEL, STAGE_LABEL, STAGES, whatsappLink } from '../../lib/format';
@@ -217,11 +217,18 @@ const CHANNEL = {
 
 export function Campaigns() {
   const { data, loading, error, reload } = useApi<CampaignRow[]>('/crm/campaigns');
+  const [broadcast, setBroadcast] = useState(false);
   if (loading && !data) return <PageLoader />;
   if (error || !data) return <ErrorBox message={error ?? 'Erro'} onRetry={reload} />;
   return (
     <div>
       <PageHeader title="Disparos" subtitle="Mande uma mensagem para vários leads de uma vez." actions={<Link to="/crm/disparos/novo"><Button size="sm" icon={<Plus className="size-4" />}>Novo disparo</Button></Link>} />
+      <button type="button" onClick={() => setBroadcast(true)} className="mb-4 flex w-full items-center gap-3 rounded-3xl border border-accent/40 bg-accent-soft p-4 text-left transition active:scale-[.99]">
+        <Megaphone className="size-5 shrink-0 text-accent" />
+        <span className="min-w-0 flex-1"><span className="block font-semibold">Enviar para todos</span><span className="block text-[13px] text-muted">Notificação no celular de todo mundo que tem o app.</span></span>
+        <ChevronRight className="size-5 shrink-0 text-faint" />
+      </button>
+      <BroadcastModal open={broadcast} onClose={() => setBroadcast(false)} />
       {!data.length ? (
         <Empty icon={<Send />} title="Nenhum disparo ainda" text="Avise seus leads sobre um imóvel novo, reative clientes frios ou mande uma novidade para todos." action={<Link to="/crm/disparos/novo"><Button icon={<Plus className="size-4" />}>Criar disparo</Button></Link>} />
       ) : (
@@ -249,7 +256,7 @@ export function Campaigns() {
   );
 }
 
-type Preview = { total: number; over_limit: boolean; phone: number; app: number; email: number; sample: string[]; email_enabled: boolean };
+type Preview = { total: number; over_limit: boolean; phone: number; app: number; email: number; devices: number; sample: string[]; email_enabled: boolean };
 export type Template = { id?: number; title: string; body: string; shared?: number; owner_id?: number; owner_name?: string | null };
 export const BUILTIN_TEMPLATES: Template[] = [
   { title: 'Primeiro contato', body: 'Olá, {nome}! Aqui é {corretor}, da Walisson Imóveis. Vi seu interesse no imóvel {imovel} e estou à disposição para te ajudar. Posso te mandar mais fotos e informações?' },
@@ -383,12 +390,111 @@ export function MessageComposer({ open, onClose, lead, onSent }: {
   );
 }
 
+/* ============================ Enviar para todos (notificação no celular) ============================ */
+type Audience = 'todos' | 'clientes' | 'equipe' | 'leads';
+const AUDIENCE_HELP: Record<Audience, string> = {
+  todos: 'Clientes do app e toda a equipe.',
+  clientes: 'Todos os clientes com conta no app.',
+  equipe: 'Corretores e administradores.',
+  leads: 'Seus leads que têm conta no app.',
+};
+export function BroadcastModal({ open, onClose, initial }: { open: boolean; onClose: () => void; initial?: Template | null }) {
+  const { user } = useAuth();
+  const toast = useToast();
+  const nav = useNavigate();
+  const admin = user!.role === 'admin';
+  const tpl = useTemplates();
+  const [audience, setAudience] = useState<Audience>(admin ? 'todos' : 'leads');
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [email, setEmail] = useState(false);
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [sending, setSending] = useState(false);
+  const [savingTpl, setSavingTpl] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setTitle(initial?.title ?? ''); setMessage(initial?.body ?? ''); setEmail(false);
+  }, [open, initial]);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    setPreview(null);
+    api<Preview>('/crm/campaigns/preview', { body: { audience, filters: { stages: [], temperatures: [] } } }).then((p) => alive && setPreview(p)).catch(() => alive && setPreview(null));
+    return () => { alive = false; };
+  }, [open, audience]);
+  const reach = audience === 'leads' ? preview?.app ?? 0 : preview?.total ?? 0;
+  const sampleName = preview?.sample[0] ?? 'Maria Silva';
+  const rendered = renderMessage(message, { name: sampleName, agent: user!.name, link: location.origin });
+
+  const send = async () => {
+    setSending(true);
+    try {
+      const r = await api<{ id: number }>('/crm/campaigns', {
+        body: { audience, filters: { stages: [], temperatures: [] }, title: title.trim(), message, channels: email ? ['app', 'email'] : ['app'] },
+      });
+      toast(`Enviado para ${reach} pessoa${reach === 1 ? '' : 's'}! ${preview?.devices ? `${preview.devices} celular${preview.devices === 1 ? '' : 'es'} recebe${preview.devices === 1 ? '' : 'm'} o push agora.` : ''}`);
+      onClose();
+      nav(`/crm/disparos/${r.id}`);
+    } catch (e: any) { toast(e.message, 'error'); } finally { setSending(false); }
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Enviar para todos" wide>
+      {admin ? (
+        <Tabs value={audience} onChange={setAudience} className="w-fit" items={[{ value: 'todos', label: 'Todos' }, { value: 'clientes', label: 'Clientes' }, { value: 'equipe', label: 'Equipe' }, { value: 'leads', label: 'Leads' }]} />
+      ) : null}
+      <div className="mt-3 flex items-center gap-3 rounded-2xl border border-line bg-surface-2 p-3 text-sm">
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent"><Smartphone className="size-5" /></span>
+        {!preview ? <span className="text-muted">Contando…</span> : (
+          <span className="min-w-0">
+            <b className="tabular-nums">{reach}</b> pessoa{reach === 1 ? '' : 's'} · <b className="tabular-nums">{preview.devices}</b> celular{preview.devices === 1 ? '' : 'es'} com o app recebe{preview.devices === 1 ? '' : 'm'} a notificação na hora
+            <span className="block text-xs text-muted">{AUDIENCE_HELP[audience]} Todos também veem no sininho do app.</span>
+          </span>
+        )}
+      </div>
+
+      <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-faint">Use uma mensagem pronta ou escreva uma nova</p>
+      <TemplateChips items={tpl.all} onPick={(t) => { setTitle(t.title); setMessage(t.body); }} />
+      <div className="mt-3 space-y-3">
+        <Field label="Título da notificação"><Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={80} placeholder="Ex.: Plantão de vendas neste sábado" /></Field>
+        <Field label="Mensagem"><Textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={1500} className="min-h-28" placeholder="Olá, {nome}! ..." /></Field>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <VariableButtons onInsert={(v) => setMessage((m) => appendVar(m, v))} />
+          {message.trim() && <button type="button" onClick={() => setSavingTpl(true)} className="text-xs font-semibold text-accent">Salvar como modelo</button>}
+        </div>
+      </div>
+
+      {title.trim() && message.trim() && (
+        <div className="mt-4">
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-faint">Como chega no celular</p>
+          <div className="rounded-2xl border border-line bg-surface-2 p-3 shadow-sm">
+            <div className="flex items-center gap-2 text-[11px] text-faint"><span className="grid size-5 place-items-center rounded-md bg-primary text-[9px] font-bold text-primary-ink">W</span>Walisson Imóveis · agora</div>
+            <p className="mt-1.5 text-sm font-semibold">{title}</p>
+            <p className="line-clamp-3 whitespace-pre-wrap text-sm text-muted">{rendered}</p>
+          </div>
+        </div>
+      )}
+
+      {preview?.email_enabled && (
+        <div className="mt-4"><Toggle checked={email} onChange={setEmail} label={<span className="text-sm">Enviar também por e-mail</span>} description="Clientes só recebem se autorizaram novidades por e-mail." /></div>
+      )}
+      <Button size="lg" className="mt-5 w-full" icon={<Send className="size-4" />} loading={sending}
+        disabled={!title.trim() || !message.trim() || !reach || !!preview?.over_limit}
+        onClick={() => { if (confirm(`Enviar "${title.trim()}" para ${reach} pessoa${reach === 1 ? '' : 's'}?`)) send(); }}>
+        {reach ? `Enviar para ${reach} pessoa${reach === 1 ? '' : 's'}` : 'Ninguém para receber ainda'}
+      </Button>
+      <SaveTemplateModal open={savingTpl} body={message} onClose={() => setSavingTpl(false)} onSaved={() => { setSavingTpl(false); tpl.reload(true); }} />
+    </Modal>
+  );
+}
+
 /* ============================ Página: mensagens prontas ============================ */
 export function MessageTemplates() {
   const { user } = useAuth();
   const toast = useToast();
   const tpl = useTemplates();
   const [editing, setEditing] = useState<Template | null>(null);
+  const [broadcast, setBroadcast] = useState<Template | null | undefined>(undefined);
   if (tpl.loading && !tpl.data) return <PageLoader />;
   if (tpl.error) return <ErrorBox message={tpl.error} onRetry={tpl.reload} />;
   const mine = tpl.data?.items ?? [];
@@ -396,7 +502,15 @@ export function MessageTemplates() {
   return (
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Mensagens prontas" subtitle="Modelos para WhatsApp, chat e disparos — o nome do cliente e o imóvel entram sozinhos."
-        actions={<Button size="sm" icon={<Plus className="size-4" />} onClick={() => setEditing({ title: '', body: '' })}>Nova</Button>} />
+        actions={<Button size="sm" variant="outline" icon={<Plus className="size-4" />} onClick={() => setEditing({ title: '', body: '' })}>Nova</Button>} />
+      <button type="button" onClick={() => setBroadcast(null)} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-primary p-4 text-left text-primary-ink transition active:scale-[.99]">
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-black/10"><Megaphone className="size-5" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">Enviar para todos</span>
+          <span className="block text-[13px] opacity-80">{user!.role === 'admin' ? 'Escreva ou escolha uma mensagem e ela chega como notificação no celular de todos.' : 'Mande uma notificação para todos os seus leads que têm o app.'}</span>
+        </span>
+        <ChevronRight className="size-5 shrink-0 opacity-70" />
+      </button>
       <Card className="mb-4 p-4 text-sm text-muted">
         <p className="mb-2 font-semibold text-text">Variáveis que você pode usar</p>
         <ul className="grid gap-1 sm:grid-cols-2">{VARIABLES.map((v) => <li key={v.key}><code className="rounded bg-surface-2 px-1.5 py-0.5 text-[12px] text-text">{v.key}</code> {v.label}</li>)}</ul>
@@ -414,9 +528,11 @@ export function MessageTemplates() {
                   <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-muted">{t.body}</p>
                   {t.owner_id !== user!.id && t.owner_name && <p className="mt-1 text-[11px] text-faint">por {t.owner_name}</p>}
                 </div>
+                {!canEdit(t) && <Button size="sm" variant="ghost" aria-label="Enviar para todos" icon={<Megaphone className="size-4" />} onClick={() => setBroadcast(t)} />}
                 {canEdit(t) && (
                   <div className="flex shrink-0 gap-1">
                     <Button size="sm" variant="secondary" onClick={() => setEditing(t)}>Editar</Button>
+                    <Button size="sm" variant="ghost" aria-label="Enviar para todos" icon={<Megaphone className="size-4" />} onClick={() => setBroadcast(t)} />
                     <Button size="sm" variant="ghost" aria-label="Excluir" icon={<Trash2 className="size-4" />} onClick={async () => { if (confirm(`Excluir "${t.title}"?`)) { await api(`/crm/templates/${t.id}`, { method: 'DELETE' }); toast('Modelo excluído.', 'info'); tpl.reload(true); } }} />
                   </div>
                 )}
@@ -430,11 +546,15 @@ export function MessageTemplates() {
         {BUILTIN_TEMPLATES.map((t) => (
           <Card key={t.title} className="flex items-start justify-between gap-3 p-4">
             <div className="min-w-0"><p className="font-semibold">{t.title}</p><p className="mt-1 line-clamp-2 text-sm text-muted">{t.body}</p></div>
-            <Button size="sm" variant="ghost" onClick={() => setEditing({ title: t.title, body: t.body })}>Personalizar</Button>
+            <div className="flex shrink-0 gap-1">
+              <Button size="sm" variant="ghost" onClick={() => setEditing({ title: t.title, body: t.body })}>Personalizar</Button>
+              <Button size="sm" variant="ghost" aria-label="Enviar para todos" icon={<Megaphone className="size-4" />} onClick={() => setBroadcast(t)} />
+            </div>
           </Card>
         ))}
       </div>
       <TemplateEditor tpl={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); tpl.reload(true); }} />
+      <BroadcastModal open={broadcast !== undefined} initial={broadcast} onClose={() => setBroadcast(undefined)} />
     </div>
   );
 }
@@ -470,7 +590,7 @@ export function CampaignNew() {
   const toast = useToast();
   const nav = useNavigate();
   const admin = user!.role === 'admin';
-  const [audience, setAudience] = useState<'leads' | 'clientes'>('leads');
+  const [audience, setAudience] = useState<Audience>('leads');
   const [stages, setStages] = useState<string[]>(['novo', 'contato', 'visita', 'proposta', 'negociacao']);
   const [temps, setTemps] = useState<string[]>([]);
   const [source, setSource] = useState('');
@@ -524,7 +644,7 @@ export function CampaignNew() {
         <Card className="p-5">
           <h3 className="mb-3 font-semibold">1. Quem vai receber</h3>
           {admin && (
-            <Tabs value={audience} onChange={setAudience} className="mb-4 w-fit" items={[{ value: 'leads', label: 'Leads do CRM' }, { value: 'clientes', label: 'Clientes do app' }]} />
+            <Tabs value={audience} onChange={setAudience} className="mb-4 w-fit" items={[{ value: 'leads', label: 'Leads do CRM' }, { value: 'clientes', label: 'Clientes do app' }, { value: 'equipe', label: 'Equipe' }, { value: 'todos', label: 'Todos' }]} />
           )}
           {audience === 'leads' ? (
             <div className="space-y-4">
@@ -543,7 +663,7 @@ export function CampaignNew() {
               </div>
             </div>
           ) : (
-            <p className="rounded-2xl bg-surface-2 p-3 text-sm text-muted">Todos os clientes cadastrados no app que <b>autorizaram receber ofertas</b> (exigência da LGPD).</p>
+            <p className="rounded-2xl bg-surface-2 p-3 text-sm text-muted">{AUDIENCE_HELP[audience]} A notificação chega no celular de quem tem o app. Por e-mail, clientes só recebem se autorizaram novidades (LGPD).</p>
           )}
           <div className="mt-4 rounded-2xl border border-line bg-surface-2 p-3 text-sm">
             {!preview ? <span className="text-muted">Calculando…</span> : (

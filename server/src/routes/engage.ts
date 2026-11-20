@@ -82,17 +82,24 @@ const filtersSchema = z.object({
   interest: zStr(30).optional(),
   agent: z.number().int().positive().optional(),
 });
-const audienceSchema = z.object({ audience: z.enum(['leads', 'clientes']).default('leads'), filters: filtersSchema.default({ stages: [], temperatures: [] }) });
-type Recipient = { lead_id: number | null; user_id: number | null; name: string; phone: string | null; email: string | null; notify_push: number | null; notify_email: number | null };
+const audienceSchema = z.object({ audience: z.enum(['leads', 'clientes', 'equipe', 'todos']).default('leads'), filters: filtersSchema.default({ stages: [], temperatures: [] }) });
+type Recipient = {
+  lead_id: number | null; user_id: number | null; name: string; phone: string | null; email: string | null;
+  notify_push: number | null; notify_email: number | null; marketing: number | null; devices: number;
+};
+const DEVICES = '(SELECT COUNT(*) FROM push_tokens pt WHERE pt.user_id = u.id)';
 const MAX_RECIPIENTS = 1000;
 
 async function findRecipients(u: SessionUser, a: z.infer<typeof audienceSchema>): Promise<Recipient[]> {
-  if (a.audience === 'clientes') {
-    if (u.role !== 'admin') throw forbidden('Apenas administradores podem disparar para todos os clientes do app.');
-    // LGPD: ofertas só para quem autorizou no cadastro ou em Minha conta
+  if (a.audience !== 'leads') {
+    if (u.role !== 'admin') throw forbidden('Apenas administradores podem enviar para todos os usuários do app.');
+    // Aviso no app vai para todos (cada um pode desligar o push em Minha conta → Notificações);
+    // e-mail de clientes só para quem autorizou receber novidades (LGPD)
+    const roles = a.audience === 'clientes' ? "('cliente')" : a.audience === 'equipe' ? "('corretor','admin')" : "('cliente','corretor','admin')";
     return all<Recipient>(
-      `SELECT NULL AS lead_id, u.id AS user_id, u.name, u.phone, u.email, u.notify_push, u.notify_email FROM users u
-       WHERE u.role = 'cliente' AND u.active = 1 AND u.marketing_opt_in = 1 AND u.email NOT LIKE '%@anon.invalid'
+      `SELECT NULL AS lead_id, u.id AS user_id, u.name, u.phone, u.email, u.notify_push, u.notify_email,
+         CASE WHEN u.role = 'cliente' THEN u.marketing_opt_in ELSE 1 END AS marketing, ${DEVICES} AS devices
+       FROM users u WHERE u.role IN ${roles} AND u.active = 1 AND u.email NOT LIKE '%@anon.invalid'
        ORDER BY u.id DESC LIMIT ${MAX_RECIPIENTS + 1}`,
     );
   }
@@ -106,7 +113,8 @@ async function findRecipients(u: SessionUser, a: z.infer<typeof audienceSchema>)
   if (f.interest) { where.push('l.interest = ?'); params.push(f.interest); }
   if (f.agent && u.role === 'admin') { where.push('l.agent_id = ?'); params.push(f.agent); }
   return all<Recipient>(
-    `SELECT l.id AS lead_id, l.user_id, l.name, l.phone, l.email, c.notify_push, c.notify_email
+    `SELECT l.id AS lead_id, c.id AS user_id, l.name, l.phone, l.email, c.notify_push, c.notify_email, NULL AS marketing,
+       (SELECT COUNT(*) FROM push_tokens pt WHERE pt.user_id = c.id) AS devices
      FROM leads l LEFT JOIN users c ON c.id = l.user_id AND c.active = 1
      WHERE ${where.join(' AND ')} ORDER BY l.updated_at DESC LIMIT ${MAX_RECIPIENTS + 1}`,
     ...params,
@@ -121,6 +129,8 @@ engageRouter.post('/campaigns/preview', async (req, res) => {
     phone: list.filter((r) => r.phone).length,
     app: list.filter((r) => r.user_id).length,
     email: list.filter((r) => r.email).length,
+    // Celulares com o app instalado e notificações ligadas (recebem o push na hora)
+    devices: list.filter((r) => r.devices > 0 && r.notify_push !== 0).length,
     sample: list.slice(0, 6).map((r) => r.name),
     email_enabled: mailEnabled(),
   });
@@ -169,7 +179,7 @@ engageRouter.post('/campaigns', async (req, res) => {
     text: render(r),
     wa: !ch.has('whatsapp') ? 'nao' : r.phone ? 'pendente' : 'sem_telefone',
     app: !ch.has('app') ? 'nao' : r.user_id ? 'enviado' : 'sem_app',
-    email: !ch.has('email') ? 'nao' : !r.email ? 'sem_email' : r.user_id && r.notify_email === 0 ? 'recusou' : mailOn ? 'pendente' : 'desativado',
+    email: !ch.has('email') ? 'nao' : !r.email ? 'sem_email' : (r.user_id && r.notify_email === 0) || r.marketing === 0 ? 'recusou' : mailOn ? 'pendente' : 'desativado',
   }));
   // Inserção em blocos (rápida também no banco na nuvem)
   for (let i = 0; i < rows.length; i += 50) {
@@ -181,12 +191,13 @@ engageRouter.post('/campaigns', async (req, res) => {
   }
   // Aviso no app (sino) para quem tem conta, em blocos
   const appRows = rows.filter((x) => x.app === 'enviado');
-  const notifLink = prop ? `/imovel/${prop.id}` : '/';
+  // Sem imóvel, o toque na notificação abre a lista de avisos com a mensagem completa
+  const notifLink = prop ? `/imovel/${prop.id}` : '/notificacoes';
   for (let i = 0; i < appRows.length; i += 50) {
     const chunk = appRows.slice(i, i + 50);
     await run(
       `INSERT INTO notifications (user_id, type, title, body, link, created_at) VALUES ${chunk.map(() => "(?, 'campanha', ?, ?, ?, ?)").join(',')}`,
-      ...chunk.flatMap((x) => [x.r.user_id, b.title, x.text.slice(0, 500), notifLink, t]),
+      ...chunk.flatMap((x) => [x.r.user_id, b.title, x.text, notifLink, t]),
     );
   }
   if (b.audience === 'leads') {
